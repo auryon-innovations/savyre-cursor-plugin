@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "command": "node ./hooks/savyre-guard.mjs"
+      }
+    ],
+    "beforeShellExecution": [
+      {
+        "command": "node ./hooks/savyre-guard.mjs"
+      }
+    ],
+    "beforeReadFile": [
+      {
+        "command": "node ./hooks/savyre-guard.mjs"
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": "node ./hooks/savyre-guard.mjs"
+      }
+    ],
+    "stop": [
+      {
+        "command": "node ./hooks/savyre-guard.mjs"
+      }
+    ]
+  }
+}

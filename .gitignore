@@ -1,0 +1,6 @@
+.DS_Store
+Thumbs.db
+runtime/*
+!runtime/.gitignore
+.savyre/
+*.log

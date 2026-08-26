@@ -1,0 +1,8 @@
+{
+  "name": "savyre-cursor-plugin",
+  "version": "0.1.0",
+  "description": "Generic enforcement runtime for an active Savyre stage. Verifies a short-lived execution manifest and blocks disallowed Agent tools. Contains no Savyre methodology.",
+  "author": {
+    "name": "Savyre"
+  }
+}

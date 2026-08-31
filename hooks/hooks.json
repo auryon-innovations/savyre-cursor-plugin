@@ -21,9 +21,15 @@
         "command": "node ./hooks/savyre-guard.mjs"
       }
     ],
-    "stop": [
+    "sessionStart": [
       {
         "command": "node ./hooks/savyre-guard.mjs"
+      }
+    ],
+    "stop": [
+      {
+        "command": "node ./hooks/savyre-guard.mjs",
+        "loop_limit": 2
       }
     ]
   }

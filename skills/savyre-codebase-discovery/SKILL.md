@@ -18,6 +18,7 @@ The stage textbook lives in the **Savyre extension** (`prompts/stages/03-codebas
 ## While this role is active
 
 - You may read application source and approved upstream `final.md` files (Stage 01 and Stage 02). That is the point of this role versus analysis.
+- Report only what you observed in an application file path. If you did not see it, write Not identified — do not guess.
 - You must not edit application source, run shell (except the plugin lifecycle CLI), start write-enabled subagents, or approve the stage.
 - Do not implement, plan, or do impact analysis. Discovery only, as Savyre instructs.
 - Submit structured output only as Savyre instructs. Cursor Agent cannot record `ACCEPTED`.

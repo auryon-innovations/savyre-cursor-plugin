@@ -18,6 +18,7 @@ The stage textbook lives in the **Savyre extension** (`prompts/stages/02-require
 ## While this role is active
 
 - You may read `savyre/stages/` (especially Stage 01 `final.md`) and the task input.
+- Cite Stage 01 section names for facts. If Stage 01 conflicts, list the contradiction — do not pick a side.
 - You must not edit application source, run shell (except the plugin lifecycle CLI), start write-enabled subagents, or approve the stage.
 - Submit structured output only as Savyre instructs. Cursor Agent cannot record `ACCEPTED`.
 

@@ -17,7 +17,7 @@ The stage textbook lives in the **Savyre extension** (`prompts/stages/06-impleme
 
 ## While this role is active
 
-- Follow the approved Stage 05 backlog (`implementation-backlog.json`). One item at a time, in `sequence`.
+- Follow the approved Stage 05 backlog (`implementation-backlog.json`) and Stage 05 `final.md`. This stage has no `input.md`; that is expected. One item at a time, in `sequence`.
 - Write application files to disk (Write / StrReplace). An item is done when its backlog acceptance line is met — not when chat says done.
 - Change tests only if the approved backlog or plan says so. Do not invent a new test suite.
 - You must not run shell (except the plugin lifecycle CLI), start subagents, delete files, or approve the stage.

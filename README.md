@@ -4,24 +4,27 @@ Generic enforcement runtime for an **active Savyre stage**. It does not contain 
 
 This repo is **only** the Cursor plugin. The VS Code/Cursor **extension** (panel, `prompts/stages/`) lives in `savyre-extension`.
 
-Stage 1 (task `input.md` and answering questions in the Savyre UI) stays in the extension. This plugin only locks Cursor while a permission slip is active.
+Stage 1 Chat mode (`/savyre-start`) can lock Cursor to write only `savyre/stages/01-task-input/input.md`. Stages 2–3 Chat write that stage's `ai-output.md` (analysis / discovery artifact). Savyre validates and unlocks; Chat cannot advance the stage. Stages 4–5 Chat mode stay read-only. Accept, Generate final, and Validate stay in the extension.
 
 ## Layout
 
 ```text
 savyre-cursor-plugin/
   .cursor-plugin/plugin.json
-  commands/savyre-run.md | savyre-status.md | savyre-stop.md
+  commands/savyre-start.md | savyre-run.md | savyre-status.md | savyre-stop.md
+  skills/savyre-task-input/SKILL.md                 Stage 1 role (instructions only)
   skills/savyre-requirement-analyst/SKILL.md       Stage 2 role (instructions only)
   skills/savyre-codebase-discovery/SKILL.md        Stage 3 role (instructions only)
   skills/savyre-impact-analyst/SKILL.md            Stage 4 role (instructions only)
   skills/savyre-plan-generation-and-review/SKILL.md Stage 5 role (instructions only)
   skills/savyre-implementation/SKILL.md            Stage 6 role (instructions only)
+  skills/savyre-run-stage/SKILL.md                 Generic runner (pick role skill)
   hooks/hooks.json
   hooks/savyre-guard.mjs
   schemas/execution-manifest.schema.json
-  fixtures/requirement-analysis.manifest.json      Stage 2 slip (read_only)
-  fixtures/codebase-discovery.manifest.json        Stage 3 slip (read_only)
+  fixtures/task-input.manifest.json                Stage 1 slip (read_write, input.md only)
+  fixtures/requirement-analysis.manifest.json      Stage 2 slip (read_write, ai-output.md only)
+  fixtures/codebase-discovery.manifest.json        Stage 3 slip (read_write, ai-output.md only)
   fixtures/impact-analysis.manifest.json           Stage 4 slip (read_only)
   fixtures/plan-generation.manifest.json           Stage 5 slip (read_only)
   fixtures/implementation.manifest.json            Stage 6 slip (read_write)
@@ -45,11 +48,14 @@ From a project workspace (not only the plugin folder):
 
 ```powershell
 node "$env:USERPROFILE\.cursor\plugins\local\savyre-cursor-plugin\hooks\savyre-guard.mjs" status
+node "$env:USERPROFILE\.cursor\plugins\local\savyre-cursor-plugin\hooks\savyre-guard.mjs" start
 node "$env:USERPROFILE\.cursor\plugins\local\savyre-cursor-plugin\hooks\savyre-guard.mjs" run
 node "$env:USERPROFILE\.cursor\plugins\local\savyre-cursor-plugin\hooks\savyre-guard.mjs" status
 ```
 
-Stage 3–6 (same lock; Stage 6 is the first write slip):
+`start` reads `.savyre/stage-status.json` `currentStageId`. No session → `mode: idle` (does not invent a workflow). Stages 01–06 enforce the matching slip. Stages 07–15 return idle with a message and do not lock.
+
+Stage 3–6 (same lock; Stages 2–5 are read-only; Stage 6 writes application files):
 
 ```powershell
 node "$env:USERPROFILE\.cursor\plugins\local\savyre-cursor-plugin\hooks\savyre-guard.mjs" run 03-codebase-discovery
@@ -62,19 +68,20 @@ node "$env:USERPROFILE\.cursor\plugins\local\savyre-cursor-plugin\hooks\savyre-g
 Then in Agent chat:
 
 1. Idle (before `run`, or after `stop`): `echo hello` works.
-2. After `run` (default): Enforced, stage `02-requirement-analysis`. Reads limited to `savyre/stages/**`.
-3. After `run 03-…`, `04-…`, or `05-plan-generation-and-review`: Enforced. Reads may include application source. Writes, shell, and code snippets in-plan still blocked.
-4. After `run 06-implementation`: Enforced, `writeMode` `read_write`. Write/StrReplace allowed. Shell, Task, and Delete still blocked.
-5. On Stages 2–5, `echo hello` and source edits are **blocked** (read-only slip).
-6. `/savyre-stop` or the `stop` CLI then idle; shell works again.
+2. After `run` (default): Enforced, stage `02-requirement-analysis`. Reads limited to `savyre/stages/**`. Writes allowed only on that stage's `ai-output.md`.
+3. After `run 03-…`: Enforced. Reads may include application source. Writes allowed only on Stage 03 `ai-output.md`.
+4. After `run 04-…` or `05-plan-generation-and-review`: Enforced, read-only. Writes blocked.
+5. After `run 06-implementation`: Enforced, `writeMode` `read_write`. Write/StrReplace allowed on application files. Shell, Task, and Delete still blocked.
+6. On Stages 4–5, `echo hello` and source edits are **blocked** (read-only slip). On Stages 2–3, Chat writes `ai-output.md`; the panel still Validates.
+7. `/savyre-stop` or the `stop` CLI then idle; shell works again.
 
-**Chat inject (experiment):** while enforced, a **new Agent chat** (`sessionStart`) injects `savyre/stages/<stage>/input.md` into the conversation. If the agent stops before a real `ai-output.md` exists, `stop` sends **one** follow-up so it continues in the same chat. Accept still happens in the Savyre extension. Caps at `loop_limit` 2.
+**Chat inject (experiment):** while enforced, a **new Agent chat** (`sessionStart`) injects stage context. Stage 01 does **not** dump official-assignment `input.md`; it tells the agent to ask what to build and wait. Stages 02–06 inject the **previous stage `final.md`** (Stage 02 → Stage 01 `final.md`). Missing current-stage `input.md` is expected. Stages 02–03 tell the agent to write `ai-output.md`; Savyre validates. Stages 04–05 stay panel-run. If the agent stops before Stage 01 has a real Assigned task, `stop` sends **one** follow-up. Accept still happens in the Savyre extension. Caps at `loop_limit` 2.
 
-Lifecycle CLI (`run` / `status` / `stop`) is allowlisted while enforced so you can turn the lock off.
+Lifecycle CLI (`run` / `start` / `status` / `stop`) is allowlisted while enforced so you can turn the lock off.
 
 User-level hooks also live at `%USERPROFILE%\.cursor\hooks.json` and call this same guard. That is required so Agent shell is blocked even when the plugin process cwd is not the project folder.
 
-The Savyre extension turns this lock on and off when the developer clicks **Run stage AI** for Requirement Analysis, Codebase Discovery, Impact Analysis, Plan Generation and Review, and Implementation. Clients should not run `/savyre-run` by hand for the product path.
+The Savyre extension turns this lock on and off when the developer clicks **Run stage AI** for Task Input, Requirement Analysis, Codebase Discovery, Impact Analysis, Plan Generation and Review, and Implementation. `/savyre-start` binds the current Agent chat to the panel's current stage (01–06). Accept / Validate stay in the panel.
 
 ## Out of scope in this round
 

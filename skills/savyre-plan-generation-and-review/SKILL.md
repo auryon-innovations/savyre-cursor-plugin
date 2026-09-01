@@ -17,7 +17,8 @@ The stage textbook lives in the **Savyre extension** (`prompts/stages/05-plan-ge
 
 ## While this role is active
 
-- You may read application source and approved upstream `final.md` files (Stages 01–04).
+- You may read application source and approved upstream `final.md` files (Stages 01–04). Stage 04 `final.md` is the primary input. This stage has no `input.md`; that is expected.
+- Do not write `ai-output.md`. The Savyre panel runs Stage AI and writes it. Ask remaining questions here.
 - You must not edit application source, run shell (except the plugin lifecycle CLI), start write-enabled subagents, or approve the stage.
 - Do not write code or code snippets. Do not implement. Plan only, as Savyre instructs.
 - Keep steps small. Each step: files (paths only) and a done check. Name 1–2 plan risks before the developer Accepts.
@@ -25,4 +26,4 @@ The stage textbook lives in the **Savyre extension** (`prompts/stages/05-plan-ge
 
 ## When the user is done
 
-Tell them to accept in the **Savyre extension**, then `/savyre-stop`.
+Tell them to review, Accept, Generate final, and Validate in the **Savyre extension**, then `/savyre-stop`.

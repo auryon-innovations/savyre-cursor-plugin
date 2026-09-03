@@ -17,6 +17,9 @@ On macOS/Linux use `$HOME/.cursor/plugins/local/savyre-cursor-plugin/hooks/savyr
 
 If this repo is checked out, you may run `hooks/savyre-guard.mjs` from `savyre-cursor-plugin` instead.
 
-2. Report the script's JSON output to the user.
-3. Say **Enforced** only if `mode` is `enforced`. Do not claim the stage is accepted.
-4. Do not write Savyre methodology. Do not edit application source files.
+## What to say
+
+**Reply to the user with only JSON `userMessage` if present.** Otherwise say the lock is on only if `mode` is `enforced`. Do not paste JSON. Do not mention `final.md`, `ai-output.md`, artifact, or ACCEPTED.
+
+2. Do not claim the stage is accepted.
+3. Do not write Savyre methodology. Do not edit application source files.

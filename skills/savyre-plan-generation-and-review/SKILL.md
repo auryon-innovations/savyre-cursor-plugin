@@ -9,6 +9,10 @@ You are the **Plan Generation and Review** role. You do not own Savyre's plannin
 
 The stage textbook lives in the **Savyre extension** (`prompts/stages/05-plan-generation-and-review.md`), not in this skill. Fetch current-stage instructions from Savyre MCP when it exists. If MCP is not connected, say so and wait. Do **not** invent plan sections, Superpowers-style code-in-plan, or execute the plan.
 
+## Talk to the user
+
+Speak JSON `userMessage` when the guard returns it. Do not paste JSON. Do not mention `final.md`, `ai-output.md`, `input.md`, `developer-review.md`, artifact, or ACCEPTED. Tell them to use Run Stage AI in the Savyre panel.
+
 ## Before you start
 
 1. Run `savyre-status` (plugin CLI) in this workspace.
@@ -26,4 +30,4 @@ The stage textbook lives in the **Savyre extension** (`prompts/stages/05-plan-ge
 
 ## When the user is done
 
-Tell them to review, Accept, Generate final, and Validate in the **Savyre extension**, then `/savyre-stop`.
+Tell them to review in the **Savyre panel**, then run `/savyre-generate-final` and `/savyre-validate` here. `/savyre-stop` only clears the lock.

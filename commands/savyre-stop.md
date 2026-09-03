@@ -13,4 +13,4 @@ Run from the workspace root:
 node "%USERPROFILE%/.cursor/plugins/local/savyre-cursor-plugin/hooks/savyre-guard.mjs" stop
 ```
 
-This lifecycle command is allowed even while enforced. After it succeeds, report `mode: idle`.
+This lifecycle command is allowed even while enforced. After it succeeds, speak JSON `userMessage` if present (`The Savyre lock is off…`). Do not paste JSON. This does not accept the stage.

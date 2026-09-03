@@ -10,7 +10,10 @@
   "writeMode": "read_write",
   "allowedTools": ["Read", "Grep", "Glob", "SemanticSearch", "Write", "StrReplace"],
   "deniedTools": ["Delete", "Shell", "Task"],
-  "allowedPaths": ["savyre/stages/01-task-input/input.md"],
+  "allowedPaths": [
+    "savyre/stages/01-task-input/input.md",
+    "savyre/stages/01-task-input/ai-output.md"
+  ],
   "excludedPaths": [".env", ".env.local", ".env.production", "id_rsa", "id_ed25519", "*.pem", "credentials.json", "secrets.json"],
   "evidenceRequired": true,
   "keyId": "savyre-local-test",

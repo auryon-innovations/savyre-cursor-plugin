@@ -13,4 +13,8 @@ Run from the workspace root:
 node "%USERPROFILE%/.cursor/plugins/local/savyre-cursor-plugin/hooks/savyre-guard.mjs" status
 ```
 
-Report `mode` (`idle` or `enforced`), `stageId`, `executionId`, and `expiresAt` from the JSON. Do not treat idle as a failed run.
+## What to say
+
+**Reply to the user with only JSON `userMessage`.** Do not paste JSON. Do not quote `message`. Follow `message` yourself if present. Do not mention `final.md`, `ai-output.md`, artifact, or ACCEPTED.
+
+Report `mode` (`idle` or `enforced`) in plain language. Do not treat idle as a failed run.

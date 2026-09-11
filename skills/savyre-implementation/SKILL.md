@@ -29,4 +29,4 @@ Speak JSON `userMessage` when the guard returns it. Do not paste JSON. Do not me
 
 ## When the user is done
 
-Tell them to run `/savyre-generate-final` when the work is done. `/savyre-stop` only clears the lock.
+Tell them to run `/savyre-next` when the work is done. `/savyre-stop` only clears the lock.

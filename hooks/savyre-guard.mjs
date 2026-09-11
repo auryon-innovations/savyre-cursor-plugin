@@ -2,17 +2,19 @@
 /**
  * Savyre thin plugin runtime.
  * - Hook mode (stdin JSON): enforce the active execution manifest.
- * - CLI: node savyre-guard.mjs run | start | status | stop | turn | confirm | answer | action
+ * - CLI: node savyre-guard.mjs run | start | status | stop | turn | confirm | next | answer | action
  *
  * Contains no Savyre stage methodology.
  */
-import { createHmac, timingSafeEqual } from 'crypto';
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
 import { existsSync, readFileSync } from 'fs';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
+import { BRAIN_MISSING_USER_MESSAGE, loadSavyreBrain } from './savyre-brain.mjs';
+import { persistChatHookUsage } from './savyre-chat-usage.mjs';
 
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const KEY_ID = 'savyre-local-test';
@@ -57,21 +59,6 @@ const STAGE_ROLE_SKILL = {
   '05-plan-generation-and-review': 'savyre-plan-generation-and-review',
   '06-implementation': 'savyre-implementation'
 };
-const CHAT_PRIMARY_SKILL_ID = {
-  '01-task-input': 'savyre.task-input-dialogue',
-  '02-requirement-analysis': 'savyre.requirement-analysis',
-  '03-codebase-discovery': 'savyre.codebase-discovery'
-};
-const CHAT_SPECIALIZED_SKILL_ID = {
-  '02-requirement-analysis': 'savyre.requirement-challenge',
-  '03-codebase-discovery': 'savyre.evidence-grounding'
-};
-const CHAT_SPECIALIZED_STATES = new Set([
-  'output_ready',
-  'ready_for_review',
-  'needs_user_input',
-  'validating'
-]);
 const REGISTRY_TO_CURSOR_SKILL = {
   'savyre.task-input-dialogue': 'savyre-task-input',
   'savyre.requirement-analysis': 'savyre-requirement-analyst',
@@ -80,33 +67,65 @@ const REGISTRY_TO_CURSOR_SKILL = {
   'savyre.evidence-grounding': 'savyre-evidence-grounding',
   'savyre.verification-before-completion': 'savyre-verification-before-completion'
 };
-const CHAT_VERIFY_SKILL_ID = 'savyre.verification-before-completion';
 
-function deriveChatTurnState({ awaitingConfirmation, pendingQuestion, aiReady, validationFailed }) {
-  if (awaitingConfirmation) return 'awaiting_confirmation';
-  if (validationFailed) return 'validation_failed';
-  if (pendingQuestion) return 'needs_user_input';
-  if (aiReady) return 'output_ready';
-  return 'drafting';
+/** Loaded from @savyre/run-config. Null means Chat cannot serve canned copy. */
+let brain = null;
+
+function deriveChatTurnState(input) {
+  if (!brain) return 'connecting';
+  return brain.deriveChatTurnState(input);
 }
 
 function pickActiveSkillRef(stageId, state, ctx = {}) {
-  const specialized = CHAT_SPECIALIZED_SKILL_ID[stageId];
+  if (!brain) return null;
+  const specialized = brain.CHAT_SPECIALIZED_SKILL_ID?.[stageId];
   const skipSpecialized =
     (stageId === '02-requirement-analysis' && ctx.challengeComplete === true) ||
     (stageId === '03-codebase-discovery' && ctx.evidenceReady === true);
-  if (specialized && CHAT_SPECIALIZED_STATES.has(state) && !skipSpecialized) {
+  const specializedStates = brain.CHAT_SPECIALIZED_STATES || [];
+  if (specialized && specializedStates.includes(state) && !skipSpecialized) {
     return `${specialized}@1.0.0`;
   }
   if (
-    CHAT_PRIMARY_SKILL_ID[stageId] &&
+    brain.CHAT_PRIMARY_SKILL_ID?.[stageId] &&
     (state === 'output_ready' || state === 'ready_for_review')
   ) {
-    return `${CHAT_VERIFY_SKILL_ID}@1.0.0`;
+    return `${brain.CHAT_VERIFY_SKILL_ID || 'savyre.verification-before-completion'}@1.0.0`;
   }
-  const primary = CHAT_PRIMARY_SKILL_ID[stageId];
+  const primary = brain.CHAT_PRIMARY_SKILL_ID?.[stageId];
   if (primary) return `${primary}@1.0.0`;
   return STAGE_ROLE_SKILL[stageId] || null;
+}
+
+function stageTitle(stageId) {
+  if (!brain) return String(stageId || '').trim() || 'this stage';
+  return brain.stageTitle(stageId);
+}
+
+function chatUserMessage(kind, opts = {}) {
+  if (!brain) return BRAIN_MISSING_USER_MESSAGE;
+  return brain.chatUserMessage(kind, opts);
+}
+
+function chatStartUserMessage(input) {
+  if (!brain) return BRAIN_MISSING_USER_MESSAGE;
+  return brain.chatStartUserMessage(input);
+}
+
+function stage01DraftAction() {
+  return (
+    brain?.STAGE01_DRAFT_ACTION ||
+    (brain ? brain.chatUserMessage('task_confirmed_draft') : '') ||
+    ''
+  );
+}
+
+function stage01LockAction() {
+  return (
+    brain?.STAGE01_LOCK_ACTION ||
+    (brain ? brain.chatUserMessage('ask_generate_final', { stageId: '01-task-input' }) : '') ||
+    ''
+  );
 }
 
 function cursorSkillForRef(activeSkill) {
@@ -126,122 +145,666 @@ const WRITE_STAGES = new Set([
   '06-implementation'
 ]);
 
-const STAGE_TITLES = {
-  '01-task-input': 'Task Input',
-  '02-requirement-analysis': 'Requirement Analysis',
-  '03-codebase-discovery': 'Codebase Discovery',
-  '04-impact-analysis': 'Impact Analysis',
-  '05-plan-generation-and-review': 'Plan Generation',
-  '06-implementation': 'Implementation'
-};
+const CONTINUE_SLASH = '/savyre-next';
 
-function stageTitle(stageId) {
-  const id = typeof stageId === 'string' ? stageId.trim() : '';
-  if (!id) return 'this stage';
-  return STAGE_TITLES[id] || id;
+function lockSlash(_stageId) {
+  return CONTINUE_SLASH;
 }
 
-function chatUserMessage(kind, opts = {}) {
-  const title = stageTitle(opts.stageId);
-  const nextTitle = stageTitle(opts.nextStageId);
-  const question = typeof opts.question === 'string' ? opts.question.trim() : '';
-  switch (kind) {
-    case 'start_panel':
-      return 'Start a session in the Savyre panel first.';
-    case 'mismatch':
-      return 'This chat is on a different step than the Savyre panel. Run `/savyre-start` with nothing after it so we match, then continue.';
-    case 'ask_what_to_build':
-      return 'What should we build?';
-    case 'confirm_task':
-      return "I've written the task in your words. If that's right, confirm with `/savyre-confirm` or the Confirm task button.";
-    case 'ask_question':
-      return question || 'I need one decision from you before we continue.';
-    case 'draft_now':
-      return `I'll draft ${title} from what you already confirmed.`;
-    case 'ask_generate_final':
-      return `The ${title} draft is ready. If it looks right, run \`/savyre-generate-final\`.`;
-    case 'ask_validate':
-      return `I've locked ${title}. Run \`/savyre-validate\` to check it and continue.`;
-    case 'ask_start_next':
-      return opts.nextStageId
-        ? `${title} is complete. ${nextTitle} is next. Run \`/savyre-start\` with nothing after it when you want to continue.`
-        : `${title} is complete. Run \`/savyre-start\` with nothing after it when you want to continue.`;
-    case 'panel_run_ai':
-      return `For ${title}, click Run Stage AI in the Savyre panel. When that's done, run \`/savyre-generate-final\` here.`;
-    case 'implement':
-      return "I'll write the app from the approved plan. When that's done, run `/savyre-generate-final`.";
-    case 'ignored_extra':
-      return `Those extra words were ignored — we're on ${title}, not a new task.`;
-    case 'confirm_not_stage_01':
-      return 'Confirm is only for Task Input. Run `/savyre-start` with nothing after it.';
-    case 'gate_failed':
-      return "That didn't go through. I'll fix the draft, then you can run `/savyre-generate-final` again.";
-    case 'validate_failed':
-      return "This stage didn't pass yet. I'll fix what failed.";
-    case 'chat_unsupported':
-      return "This stage isn't available in Chat yet. Continue in the Savyre panel.";
-    case 'task_confirmed_draft':
-      return "Task confirmed. I'll draft Task Input now.";
-    case 'answer_saved_done':
-      return `Got it. If the ${title} draft looks right, run \`/savyre-generate-final\`.`;
-    case 'unavailable':
-      return 'Savyre is not available here. Use the Savyre panel.';
-    case 'lock_off':
-      return 'The Savyre lock is off. Start a session in the panel, then run `/savyre-start`.';
-    case 'on_stage':
-      return `We're on ${title}.`;
-    case 'challenge_now':
-      return `I'll take a second look at ${title}.`;
-    case 'evidence_now':
-      return `I'll attach evidence for what I observed in ${title}.`;
-    case 'need_challenge':
-      return `${title} still needs a second look at the draft before we can lock it.`;
-    case 'need_evidence':
-      return `${title} still needs evidence for what was observed.`;
-    case 'need_answers':
-      return 'I still need a decision from you before we can lock this step.';
-    default:
-      return '';
-  }
+function checkSlash(_stageId) {
+  return CONTINUE_SLASH;
 }
 
-function chatStartUserMessage(input) {
-  const parts = [];
-  if (input.ignoredUserText) {
-    parts.push(chatUserMessage('ignored_extra', { stageId: input.stageId }));
+function waitForDeveloperSlash(slash) {
+  return `speak only userMessage and wait for the developer to run \`${slash}\`. Do not run it yourself.`;
+}
+
+const TALK_FROM_ASSIGNED_THEN_CONFIRM =
+  'From the product prompt (input.md Assigned task or what they typed), write 2-4 short sentences plus a Product / UX / API / Data / Stack list (only headings the prompt supports). Save that same text under ## Assigned task in savyre/stages/01-task-input/input.md (replace leftover or the summarize-placeholder). Keep Official assignment unchanged. Speak that same Assigned task text, then speak userMessage exactly. Do not speak Original Task. Never list Original Task or other ai-output headings in chat. Do not invent features. Do not paste Official assignment, JSON, message, suggestedTask, or hashes. Wait for /savyre-next. Do not write ai-output.md until they continue.';
+
+const TALK_FROM_ASSIGNED_THEN_LOCK =
+  'Read savyre/stages/01-task-input/input.md Assigned task (not Original Task). Write 1-2 short sentences in your own voice that you wrote the Task Input draft, from that input.md text. Do not invent features. Do not paste Official assignment, JSON, message, suggestedTask, hashes, or continuation. Do not list artifactTemplate headings in chat. Then speak userMessage exactly. Do not speak a leftover numbered list. Wait for /savyre-next.';
+
+const TALK_AFTER_CONFIRM_THEN_DRAFT =
+  'Task confirmed. Do not paste JSON. Do not speak leftover product names. Do not speak the canned draft line as the reply. Do not list Original Task headings in chat. Copy input.md Assigned task into Original Task unchanged. Fill the rest of ai-output.md from that same input.md text (no Generate Output placeholder). Then run turn. Then write 1-2 short sentences from input.md Assigned task (not Original Task), then speak the new userMessage exactly (lock).';
+
+const WORKFLOW_INSTRUCTION_RX = [
+  /\bRun stage AI\b/i,
+  /\bGenerate final\.md\b/i,
+  /\bGenerate Output\b/i,
+  /\bGenerate Final\b/i,
+  /\bValidate stage\b/i,
+  /\b(all )?(15|14|13)[- ]stages?\b/i,
+  /\b15-stage\b/i,
+  /\bsavyre\/stages\b/i,
+  /\bdeveloper-review\.md\b/i,
+  /\bai-session-log\b/i,
+  /\b\.savyre\//i,
+  /\bSavyre AI Coding Workflow\b/i,
+  /\bSavyre 15-stage\b/i,
+  /\bworking through the\b/i,
+  /\bHow to run Savyre\b/i,
+  /\bWorkflow session\b/i,
+  /\bevidence stays local\b/i,
+  /\blog AI interactions\b/i,
+  /\bStage \d{2}\b/i,
+  /\bOfficial assignment\b/i,
+  /\bRead the official assignment\b/i,
+  /\bStage 01 — Task Input\b/i,
+  /\bStage 01 – Task Input\b/i,
+  /\bcandidate-review\.md\b/i,
+  /\bComplete each stage\b/i,
+  /\bAccept, Generate final, and Validate\b/i
+];
+
+const ASSIGNED_TASK_HEADING_RE = /##\s*Assigned task(?: \(in your own words\))?/i;
+
+const ASSIGNED_SCAFFOLD_RX = [
+  /^[-*]\s*$/,
+  /^Summarize the task, bug, or feature request in your own words\.?$/i,
+  /^Describe the (assigned )?task in your own words\.?$/i
+];
+
+function hashOriginalTask(text) {
+  return createHash('sha256').update(String(text || '').trim(), 'utf8').digest('hex');
+}
+
+function stripMarkdownNoise(text) {
+  return String(text || '').replace(/\*+/g, '').replace(/`+/g, '');
+}
+
+function looksLikeProductTask(text) {
+  return /\b(create|build|make|implement|add|fix|app|todo|clone|website|feature|users? can)\b/i.test(
+    text
+  );
+}
+
+function looksLikeWorkflowDoc(text) {
+  const plain = stripMarkdownNoise(text);
+  return WORKFLOW_INSTRUCTION_RX.some((rx) => rx.test(plain) || rx.test(text));
+}
+
+function isWorkflowInstructionLine(line) {
+  const trimmed = String(line || '').trim();
+  if (!trimmed) return false;
+  const plain = stripMarkdownNoise(trimmed);
+  if (/^#\s+(Stage 01|Savyre|Getting started|How to run)\b/i.test(plain)) return true;
+  const bullet = plain.replace(/^[-*+]\s+/, '').replace(/^\d+\.\s+/, '').trim();
+  if (ASSIGNED_SCAFFOLD_RX.some((rx) => rx.test(plain) || rx.test(bullet))) return true;
+  if (trimmed.startsWith('#') && !looksLikeProductTask(plain)) {
+    return looksLikeWorkflowDoc(plain);
   }
-  const pending = typeof input.pendingQuestion === 'string' ? input.pendingQuestion.trim() : '';
-  if (pending) {
-    parts.push(chatUserMessage('ask_question', { question: pending }));
-    return parts.join(' ');
+  if (trimmed.startsWith('#') && looksLikeProductTask(plain)) return false;
+  if (trimmed.startsWith('#') && !looksLikeWorkflowDoc(plain)) return false;
+  return WORKFLOW_INSTRUCTION_RX.some((rx) => rx.test(bullet) || rx.test(plain));
+}
+
+function extractUserTaskFromMixedInput(raw) {
+  const lines = String(raw || '').split(/\r?\n/);
+  let discardedWorkflow = false;
+  const kept = [];
+  for (const line of lines) {
+    if (isWorkflowInstructionLine(line)) {
+      discardedWorkflow = true;
+      continue;
+    }
+    const t = line.trim();
+    if (/^#\s+(Stage 01|Savyre|Getting started|How to run)\b/i.test(t)) {
+      discardedWorkflow = true;
+      continue;
+    }
+    kept.push(line);
   }
-  const stageId = input.stageId;
-  if (stageId === '01-task-input' && !input.confirmed) {
-    parts.push(chatUserMessage(input.suggestedTask ? 'confirm_task' : 'ask_what_to_build'));
-    return parts.join(' ');
+  return {
+    originalTask: kept.join('\n').replace(/\n{3,}/g, '\n\n').trim(),
+    discardedWorkflow
+  };
+}
+
+function assignedTaskSectionBody(inputMd) {
+  const match = String(inputMd || '').match(
+    /##\s*Assigned task(?: \(in your own words\))?[\s\S]*?(?=\n##\s|$)/i
+  );
+  if (!match?.[0]) return '';
+  return match[0].replace(ASSIGNED_TASK_HEADING_RE, '').trim();
+}
+
+function stripAssignedScaffold(body) {
+  return String(body || '')
+    .split('\n')
+    .filter((line) => {
+      const t = line.trim();
+      if (!t || t === '-') return false;
+      return !ASSIGNED_SCAFFOLD_RX.some((rx) => rx.test(t));
+    })
+    .join('\n')
+    .trim();
+}
+
+function productWordingFromRaw(raw) {
+  const extracted = extractUserTaskFromMixedInput(raw);
+  const text = extracted.originalTask.trim();
+  if (!text) return '';
+  if (looksLikeWorkflowDoc(text) && !looksLikeProductTask(text)) return '';
+  return text;
+}
+
+function productWordingFromStage01Input(inputMd) {
+  return productWordingFromRaw(stripAssignedScaffold(assignedTaskSectionBody(inputMd)));
+}
+
+function looksLikeWorkflowReview(text) {
+  const t = String(text || '');
+  return (
+    /\b15-stage\b/i.test(t) ||
+    /working through the/i.test(t) ||
+    /\bGenerate Output\b/i.test(t) ||
+    /Savyre 15-stage/i.test(t)
+  );
+}
+
+function trackOriginalTask(input) {
+  const text = String(input.text || '').trim();
+  const hash = hashOriginalTask(text);
+  const prev = input.previousHash?.trim() || '';
+  const prevRev = input.previousRevision && input.previousRevision > 0 ? input.previousRevision : 1;
+  return {
+    text,
+    hash,
+    source: input.source,
+    revision: prev && prev !== hash ? prevRev + 1 : prev ? prevRev : 1
+  };
+}
+
+function firstSentence(text) {
+  const t = String(text || '').replace(/\s+/g, ' ').trim();
+  const cut = t.match(/^(.+?[.!?])(\s|$)/);
+  return (cut?.[1] || t).trim();
+}
+
+function tidyPhrase(text) {
+  return String(text || '')
+    .replace(/\s+/g, ' ')
+    .replace(/^[-–,:;\s]+|[-–,:;\s]+$/g, '')
+    .replace(/[.]+$/, '')
+    .trim();
+}
+
+function normalizeFactKey(text) {
+  return tidyPhrase(text).toLowerCase();
+}
+
+function truncateWords(text, limit) {
+  const words = tidyPhrase(text).split(/\s+/).filter(Boolean);
+  if (words.length <= limit) return words.join(' ');
+  return `${words.slice(0, limit).join(' ')}…`;
+}
+
+function wordCount(text) {
+  return text.trim() ? text.trim().split(/\s+/).length : 0;
+}
+
+function extractWhatToBuild(text) {
+  const forManage = extractForManageProduct(text);
+  if (forManage) return forManage;
+  const purpose = text.match(
+    /\b(?:build|create|make|implement|develop(?:ing)?)\s+(?:a|an|the)?\s+(?:web\s+)?(app|application|site|website|tool|platform)\s+(where|that(?!\s+works\s+like)|to)\s+(.+?)(?=\s+(?:using|use\b|with|also|and use)\b|[.,;]|$)/i
+  );
+  if (purpose) {
+    return truncateWords(`${purpose[1]} ${purpose[2]} ${purpose[3]}`, 12);
   }
-  if (stageId === '04-impact-analysis' || stageId === '05-plan-generation-and-review') {
-    parts.push(chatUserMessage('panel_run_ai', { stageId }));
-    return parts.join(' ');
+  const built = text.match(
+    /\b(?:build|create|make|implement|develop(?:ing)?)\s+(?:a|an|the)?\s+(.+?)(?=\s+(?:using|with|in|for|that|where|so that|and then)\b|[.,;]|$)/i
+  );
+  if (built?.[1]) return truncateWords(built[1], 8);
+  const clone = text.match(/\b((?:[\w]+(?:\s+[\w]+){0,4})\s+clone)\b/i);
+  return clone?.[1] ? tidyPhrase(clone[1]) : '';
+}
+
+function stripAssignmentPreamble(text) {
+  let t = String(text || '').replace(/\s+/g, ' ').trim();
+  t = t.replace(
+    /^(?:you are tasked with|your (?:task|assignment|job) is to)\s+(?:developing|building|creating|implementing|making|develop|build|create|implement|make)\s+/i,
+    ''
+  );
+  t = t.replace(/\byour solution should include\b/gi, '');
+  t = t.replace(/\bfocus on\b[\s\S]*$/i, '');
+  return tidyPhrase(t);
+}
+
+function spokenTaskText(originalTask) {
+  const product = productWordingFromRaw(originalTask) || String(originalTask || '').trim();
+  return stripAssignmentPreamble(
+    product.replace(/\bcpmplete\b/gi, 'complete').replace(/\s+/g, ' ').trim()
+  );
+}
+
+function extractForManageProduct(text) {
+  const m = text.match(
+    /\b(?:web\s+)?(app|application|site|website|tool|platform)\s+for\s+(?:a|an|the)?\s*(.+?)\s+to\s+(manage|handle|track|book|schedule)\s+(.+?)(?=[.,;]|$)/i
+  );
+  if (!m) return '';
+  const place = tidyPhrase(m[2]);
+  const domain = tidyPhrase(m[4]);
+  if (!place || !domain || /\bauth/i.test(place)) return '';
+  return truncateWords(`${place} ${domain}`, 8);
+}
+
+function extractAudience(text) {
+  const mine = text.match(/\bfor\s+(?:my|our)\s+(.+?)(?=\s+(?:using|with|that|where)|[.,;]|$)/i);
+  if (!mine?.[1]) return '';
+  const body = tidyPhrase(mine[1]);
+  if (/\bauth(?:entication)?\b/i.test(body)) return '';
+  return truncateWords(body, 10);
+}
+
+function looksLikeNoAuth(text) {
+  return (
+    /\b(?:no|without|not)\s+(?:any\s+)?(?:auth(?:entication)?|log[- ]?ins?|sign[- ]?ins?)(?:\s+required)?\b/i.test(
+      text
+    ) || /\b(?:auth(?:entication)?|log[- ]?in|sign[- ]?in)\s+(?:is\s+)?not\s+required\b/i.test(text)
+  );
+}
+
+function stripTrailingAuthClause(text) {
+  return tidyPhrase(
+    String(text || '')
+      .replace(
+        /\b(?:with\s+)?(?:no|without|not)\s+(?:any\s+)?(?:auth(?:entication)?|log[- ]?ins?|sign[- ]?ins?)(?:\s+required)?\b/gi,
+        ''
+      )
+      .replace(/\b(?:auth(?:entication)?|log[- ]?in|sign[- ]?in)\s+(?:is\s+)?not\s+required\b/gi, '')
+  );
+}
+
+function extractProductLine(text) {
+  const what = extractWhatToBuild(text);
+  const audience = extractAudience(text);
+  let line = what;
+  if (what && audience && !normalizeFactKey(what).includes(normalizeFactKey(audience))) {
+    line = truncateWords(`${what} for ${audience}`, 12);
   }
-  if (stageId === '06-implementation') {
-    parts.push(chatUserMessage('implement'));
-    return parts.join(' ');
+  return stripTrailingAuthClause(line);
+}
+
+function extractStack(text) {
+  const namedStack = text.match(/\b(mern|mean)(?:\s+stack)?\b/i);
+  if (namedStack?.[1]) {
+    return /stack/i.test(namedStack[0]) ? tidyPhrase(namedStack[0]) : tidyPhrase(namedStack[1]);
   }
-  if (!input.aiReady) {
-    parts.push(chatUserMessage('draft_now', { stageId }));
-    return parts.join(' ');
+  const using = text.match(/\b(?:using|use[sd]?)\s+(?:the\s+)?([A-Za-z][\w.+#]*(?:\s+stack)?)/i);
+  if (using?.[1] && !/^(the\s+)?(browser|url|urls|link|http|https|database|db)\b/i.test(using[1])) {
+    return tidyPhrase(using[1]);
   }
-  if (stageId === '02-requirement-analysis' && input.challengeComplete !== true) {
-    parts.push(chatUserMessage('challenge_now', { stageId }));
-    return parts.join(' ');
+  const inTech = text.match(
+    /\bin\s+((?:[A-Za-z][\w.+#]*)(?:\s+and\s+[A-Za-z][\w.+#]*)?(?:\s+stack)?)/
+  );
+  if (inTech?.[1] && !/^(the|your|a|an|this|that|my)\b/i.test(inTech[1])) {
+    return tidyPhrase(inTech[1]);
   }
-  if (stageId === '03-codebase-discovery' && input.evidenceReady !== true) {
-    parts.push(chatUserMessage('evidence_now', { stageId }));
-    return parts.join(' ');
+  if (/\bonly the ui\b|\bui[- ]only\b|\bjust the ui\b|\bui only\b/i.test(text)) {
+    return 'UI only';
   }
-  parts.push(chatUserMessage('ask_generate_final', { stageId }));
-  return parts.join(' ');
+  if (/\bfrontend[- ]only\b|\bno backend\b|\bclient[- ]only\b/i.test(text)) {
+    return 'frontend-only';
+  }
+  return '';
+}
+
+function extractAuthOrOpen(text) {
+  if (looksLikeNoAuth(text)) return 'no authentication';
+  const authFor = text.match(/\bfor\s+auth(?:entication)?\s+(.+?)(?=[.,;]|$)/i);
+  if (authFor?.[1]) return `auth: ${truncateWords(authFor[1], 10)}`;
+  if (
+    /\b(sign[- ]?in|log[- ]?in|account|authentication)\b/i.test(text) &&
+    /\b(undecided|versus|vs\.?|whether|optional|not (sure|decided))\b/i.test(text)
+  ) {
+    return 'sign-in is still open';
+  }
+  if (/\bauthentication\b|\bauth\b|\bsign[- ]?in\b|\blog[- ]?in\b/i.test(text)) {
+    return 'authentication';
+  }
+  return '';
+}
+
+function extractSeededData(text) {
+  if (/\bseeded(?:\s+data)?\b|\bseed data\b|\bmock data\b|\bsample data\b/i.test(text)) {
+    return 'seeded data';
+  }
+  return '';
+}
+
+function extractApi(text) {
+  const m = text.match(/\bbackend(?:\s+api)?\s+to\s+(.+?)(?=[.,;]|$)/i);
+  if (m?.[1]) return `backend API to ${truncateWords(tidyPhrase(m[1]), 8)}`;
+  if (/\bbackend api\b/i.test(text)) return 'backend API';
+  return '';
+}
+
+function extractDataModel(text) {
+  const m = text.match(/\bdata model\s+for\s+(?:storing\s+)?(.+?)(?=[.,;]|$)/i);
+  if (m?.[1]) return truncateWords(tidyPhrase(m[1]), 10);
+  return '';
+}
+
+function extractUx(text) {
+  const bits = [];
+  const worksLike = text.match(
+    /\bthat works like\s+(.+?)(?=\s+(?:also\b|using\b|with\b)|[.]|$)/i
+  );
+  if (worksLike?.[1]) {
+    bits.push(truncateWords(tidyPhrase(worksLike[1].replace(/^(?:a|an|the)\s+/i, '')), 16));
+  }
+  const upload = text.match(
+    /\buser(?:s)?\s+(?:can\s+)?uploads?\s+([^.;]+?)(?=\s+and it\b|[.;]|$)/i
+  );
+  if (upload?.[1] && !bits.some((bit) => /\bupload/i.test(bit))) {
+    bits.push(`uploads ${truncateWords(tidyPhrase(upload[1]), 8)}`);
+  }
+  if (
+    /\bautomatically\s+(?:updates?|tracks?|syncs?|adjusts?)\b/i.test(text) &&
+    !bits.some((bit) => /\bautomatic/i.test(bit))
+  ) {
+    const auto = text.match(
+      /\bautomatically\s+((?:updates?|tracks?|syncs?|adjusts?)\s+.+?)(?=\s+(?:also\b|using\b|with\b)|[.;]|$)/i
+    );
+    bits.push(truncateWords(tidyPhrase(auto?.[1] || 'updates automatically'), 8));
+  }
+  const noMaintain = text.match(
+    /\buser(?:s)?\s+(?:does not|do not|doesn’t|don't)\s+need to\s+(.+?)(?=\s+(?:also\b|using\b|with\b)|[.;]|$)/i
+  );
+  if (noMaintain?.[1] && !bits.some((bit) => normalizeFactKey(bit).includes('need to'))) {
+    bits.push(`user does not need to ${truncateWords(tidyPhrase(noMaintain[1]), 8)}`);
+  }
+  const frontendFor = text.match(
+    /\b((?:responsive\s+)?(?:frontend|ui|interface))\s+for\s+(?:both\s+)?(.+?)\s+and\s+(.+?)(?=[.,;]|$)/i
+  );
+  if (frontendFor) {
+    bits.push(
+      tidyPhrase(
+        `${frontendFor[1]} for ${tidyPhrase(frontendFor[2])} and ${tidyPhrase(frontendFor[3])}`
+      )
+    );
+  }
+  const compare = text.match(
+    /\bcompare(?:s|d)?\s+([^.;]+?)(?=\s+(?:using|use\b|with|also)\b|[.,;]|$)/i
+  );
+  if (compare?.[1] && !bits.some((bit) => /\bcompare/i.test(bit))) {
+    bits.push(`compare ${truncateWords(tidyPhrase(compare[1]), 10)}`);
+  }
+  if (/\burls?\b/i.test(text) && /\b(price|compare)\b/i.test(text) && !bits.some((bit) => /\burl/i.test(bit))) {
+    bits.push('uses a URL');
+  }
+  if (
+    /\bprice/i.test(text) &&
+    /\b(low|less|high)\b/i.test(text) &&
+    !bits.some((bit) => /\bprice was low/i.test(bit))
+  ) {
+    bits.push('see when the price was low and high');
+  }
+  if (!bits.length) {
+    const soThat = text.match(/\bso that\s+([^.;]+)/i);
+    if (soThat?.[1] && wordCount(soThat[1]) >= 4) {
+      bits.push(truncateWords(tidyPhrase(soThat[1]), 14));
+    }
+  }
+  const joined = uniqueFacts(bits).join('; ');
+  if (!joined || wordCount(joined) < 3) return '';
+  return joined;
+}
+
+function extractDatabase(text) {
+  const named = text.match(
+    /\b(mongodb|postgres(?:ql)?|mysql|mariadb|sqlite|firebase|supabase|dynamodb|redis)\b/i
+  );
+  if (named?.[1]) return tidyPhrase(named[1]);
+  return /\bmongo\b/i.test(text) ? 'MongoDB' : '';
+}
+
+function uniqueFacts(bits) {
+  const seen = new Set();
+  const out = [];
+  for (const bit of bits) {
+    const key = normalizeFactKey(bit);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(bit);
+  }
+  return out;
+}
+
+function summarizeProductFacts(originalTask) {
+  const t = spokenTaskText(originalTask);
+  if (!t) return '';
+  const bits = uniqueFacts(
+    [
+      extractProductLine(t),
+      extractUx(t),
+      extractApi(t),
+      extractDataModel(t),
+      extractStack(t),
+      /\bpersist|\blocalStorage\b|\blocal\s+storage\b|\bin the browser\b/i.test(t)
+        ? 'persist in the browser'
+        : '',
+      extractAuthOrOpen(t),
+      extractSeededData(t),
+      extractDatabase(t)
+    ].filter(Boolean)
+  );
+  let facts = bits.join('; ');
+  if (!facts) facts = truncateWords(t, 16);
+  return facts;
+}
+
+function titleForProductFact(bit) {
+  const lower = normalizeFactKey(bit);
+  if (
+    /\bclone\b/.test(lower) ||
+    /\b(todo|notes|app|application|site|website|ecommerce|e-commerce|shop|store|marketplace)\b/.test(
+      lower
+    )
+  ) {
+    return 'Product';
+  }
+  if (/\bui only\b|\bfrontend-only\b/.test(lower)) return 'Scope';
+  if (/\bno authentication\b|\bnot required\b/.test(lower) || /\bauth|\bsign-in|\blogin\b/.test(lower)) {
+    return 'Authentication';
+  }
+  if (/\b(mongodb|postgres|mysql|mariadb|sqlite|firebase|supabase|dynamodb|redis)\b/.test(lower)) {
+    return 'Database';
+  }
+  if (/\bbackend|\bapi\b/.test(lower)) return 'API';
+  if (/\bseeded|\bmock |\bsample data\b|\bdata model\b|\bappointment information\b/.test(lower)) {
+    return 'Data';
+  }
+  if (/\busers can\b/.test(lower)) return 'Actions';
+  if (/\bpersist\b/.test(lower)) return 'Persistence';
+  if (/\bvisible\b/.test(lower)) return 'Behavior';
+  if (
+    /\bupload|\bautomatically updates|\bdoes not need to\b|\bcompare\b|\burl\b|\bprice was low\b|\bresponsive frontend\b|\bclinic staff\b/.test(
+      lower
+    )
+  ) {
+    return 'UX';
+  }
+  if (/\breact|\btypescript|\bmern|\bmean\b|\bstack\b/.test(lower)) return 'Stack';
+  return 'Detail';
+}
+
+function formatChatReport(items) {
+  const seen = new Set();
+  const out = [];
+  for (const item of items) {
+    const title = String(item.title || '').trim();
+    const body = tidyPhrase(item.body);
+    if (!title || !body) continue;
+    const key = `${normalizeFactKey(title)}|${normalizeFactKey(body)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ title, body });
+  }
+  return out.map((item, i) => `${i + 1}. **${item.title}** — ${item.body}`).join('\n');
+}
+
+function collectProductFactItems(originalTask) {
+  const t = spokenTaskText(originalTask);
+  if (!t) return [];
+  const usedTitles = new Set();
+  const items = [];
+  const push = (title, body) => {
+    const cleaned = tidyPhrase(body);
+    if (!cleaned) return;
+    let heading = title;
+    if (usedTitles.has(heading)) heading = 'Detail';
+    usedTitles.add(heading);
+    items.push({ title: heading, body: cleaned });
+  };
+  push('Product', extractProductLine(t));
+  push('UX', extractUx(t));
+  push('API', extractApi(t));
+  push('Data', extractDataModel(t));
+  const leftover = uniqueFacts(
+    [
+      extractStack(t),
+      /\bpersist|\blocalStorage\b|\blocal\s+storage\b|\bin the browser\b/i.test(t)
+        ? 'persist in the browser'
+        : '',
+      extractAuthOrOpen(t),
+      extractSeededData(t),
+      extractDatabase(t)
+    ].filter(Boolean)
+  );
+  const already = new Set(items.map((item) => normalizeFactKey(item.body)));
+  const productBody = items[0]?.body || '';
+  for (const bit of leftover) {
+    const key = normalizeFactKey(bit);
+    if (already.has(key)) continue;
+    if (productBody && normalizeFactKey(productBody).includes(key)) continue;
+    if (key === 'authentication' && looksLikeNoAuth(t)) continue;
+    if (
+      key === 'no authentication' &&
+      /\bno auth|\bwithout auth|\bno login|\bno authentication/.test(normalizeFactKey(productBody))
+    ) {
+      continue;
+    }
+    push(titleForProductFact(bit), bit);
+  }
+  if (items.length) return items;
+  for (const bit of summarizeProductFacts(t)
+    .split(';')
+    .map((part) => tidyPhrase(part))
+    .filter(Boolean)) {
+    push(titleForProductFact(bit), bit);
+  }
+  return items;
+}
+
+function buildStage01IntakeReport(input) {
+  return formatChatReport(collectProductFactItems(input.originalTask));
+}
+
+const INTAKE_LEAD_WORD_LIMIT = 40;
+
+function ensureSpokenPeriod(text) {
+  const t = tidyPhrase(text);
+  if (!t) return '';
+  return /[.!?]$/.test(t) ? t : `${t}.`;
+}
+
+function spokenArticle(product) {
+  const p = tidyPhrase(product);
+  if (!p) return '';
+  if (/^(a|an|the)\b/i.test(p)) return p;
+  return `${/^[aeiou]/i.test(p) ? 'an' : 'a'} ${p}`;
+}
+
+function spokenUxLine(ux) {
+  const t = tidyPhrase(ux);
+  if (!t) return '';
+  if (/^users?\b/i.test(t)) return ensureSpokenPeriod(`${t.charAt(0).toUpperCase()}${t.slice(1)}`);
+  if (/^uploads\b/i.test(t)) return ensureSpokenPeriod(`Users ${t}`);
+  return ensureSpokenPeriod(`${t.charAt(0).toUpperCase()}${t.slice(1)}`);
+}
+
+function spokenRestFacts(items) {
+  const bits = items.map((item) => item.body).filter(Boolean);
+  if (!bits.length) return '';
+  const auth = bits.filter((bit) => /auth|sign-in|login/i.test(bit));
+  const other = bits.filter((bit) => !/auth|sign-in|login/i.test(bit));
+  const parts = [...other];
+  for (const bit of auth) {
+    if (/^no /i.test(bit) || /still open/i.test(bit) || /^with /i.test(bit) || /^auth:/i.test(bit)) {
+      parts.push(bit);
+    } else {
+      parts.push(`with ${bit}`);
+    }
+  }
+  if (!parts.length) return '';
+  const text = parts.join(', ');
+  return ensureSpokenPeriod(`${text.charAt(0).toUpperCase()}${text.slice(1)}`);
+}
+
+function capLeadSentences(sentences) {
+  const kept = sentences.filter(Boolean);
+  while (kept.length > 1 && wordCount(kept.join(' ')) > INTAKE_LEAD_WORD_LIMIT) {
+    kept.pop();
+  }
+  return kept.join(' ').trim();
+}
+
+function buildStage01IntakeLead(input) {
+  const items = collectProductFactItems(input.originalTask);
+  const product = items.find((item) => item.title === 'Product')?.body || '';
+  const named = spokenArticle(product) || 'the product';
+  if (input.draftReady) {
+    return `I've written the Task Input draft for ${named}.`;
+  }
+  if (input.confirmed) {
+    return `I'll write the Task Input draft for ${named}.`;
+  }
+  if (!items.length) return "I've captured the product.";
+  const sentences = [`Got it — ${named}.`];
+  const ux = items.find((item) => item.title === 'UX')?.body;
+  if (ux) sentences.push(spokenUxLine(ux));
+  const rest = spokenRestFacts(items.filter((item) => item.title !== 'Product' && item.title !== 'UX'));
+  if (rest) sentences.push(rest);
+  return capLeadSentences(sentences);
+}
+
+function buildStage01IntakeReview(input) {
+  if (brain?.buildStage01IntakeReview) {
+    return brain.buildStage01IntakeReview(input);
+  }
+  return BRAIN_MISSING_USER_MESSAGE;
+}
+
+function extractAssignedTaskPlain(inputText) {
+  return productWordingFromStage01Input(inputText);
+}
+
+function upsertAssignedTaskInInput(content, taskText) {
+  const task = String(taskText || '').trim();
+  const block = `## Assigned task (in your own words)\n\n${task}\n`;
+  if (ASSIGNED_TASK_HEADING_RE.test(content)) {
+    return content.replace(
+      /##\s*Assigned task(?: \(in your own words\))?[\s\S]*?(?=\n##\s|$)/i,
+      block
+    );
+  }
+  return `${String(content || '').trimEnd()}\n\n${block}`;
+}
+
+async function persistAssignedTaskExact(workspace, taskText) {
+  const abs = path.join(workspace, 'savyre', 'stages', '01-task-input', 'input.md');
+  let current = '';
+  try {
+    current = await fs.readFile(abs, 'utf8');
+  } catch {
+    current = '';
+  }
+  const next = upsertAssignedTaskInInput(current, taskText);
+  await fs.mkdir(path.dirname(abs), { recursive: true });
+  await fs.writeFile(abs, next.endsWith('\n') ? next : `${next}\n`, 'utf8');
 }
 
 function withUserMessage(payload, userMessage) {
@@ -304,7 +867,7 @@ async function readKey() {
   return raw.trim();
 }
 
-const LIFECYCLE_VERBS = 'run|start|status|stop|turn|confirm|answer|action';
+const LIFECYCLE_VERBS = 'run|start|status|stop|turn|confirm|next|answer|action';
 
 function isLifecycleCommand(command) {
   const c = String(command || '').replace(/\\/g, '/');
@@ -404,8 +967,8 @@ function chatPanelMismatchResult(action, boundStageId, panelStageId) {
       boundStageId: boundStageId || null,
       panelStageId,
       reason: boundStageId
-        ? `Chat is bound to ${boundStageId} but the panel is on ${current}. Do not generate-final, validate, confirm, or answer on ${boundStageId}. Ask the developer to run /savyre-start (no extra text) for ${current}. Wait.`
-        : `Chat is not bound to the panel. Ask the developer to run /savyre-start (no extra text) for ${current}. Wait.`
+        ? `Chat is bound to ${boundStageId} but the panel is on ${current}. Do not generate-final, validate, confirm, or answer on ${boundStageId}. Speak userMessage. Wait for /savyre-next.`
+        : `Chat is not bound to the panel. Speak userMessage. Wait for /savyre-next.`
     },
     chatUserMessage('mismatch')
   );
@@ -429,6 +992,127 @@ async function requireChatPanelMatch(workspace, action) {
     return chatPanelMismatchResult(action, boundStageId, panelStageId);
   }
   return { ok: true, panelStageId, boundStageId };
+}
+
+function tryLoadChatAdapter(workspace) {
+  const cliJs = resolveSavyreCliJs();
+  if (!cliJs) return null;
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [cliJs, 'workflow', 'chat-action', 'turn', '--json'],
+      { cwd: workspace, encoding: 'utf8', timeout: 20000 }
+    );
+    const parsed =
+      parseCliJson(result.stdout) ||
+      parseCliJson(result.stderr) ||
+      parseCliJson(`${result.stdout || ''}\n${result.stderr || ''}`);
+    if (!parsed || typeof parsed !== 'object' || !parsed.data) return null;
+    return parsed.data;
+  } catch {
+    /* adapter is optional when the CLI is missing or old */
+  }
+  return null;
+}
+
+function withUnifiedTurn(payload, workspace) {
+  const data = tryLoadChatAdapter(workspace);
+  if (!data) return payload;
+  const next = { ...payload };
+  if (data.unifiedTurn && data.unifiedTurn.status && data.unifiedTurn.nextAction) {
+    next.unifiedTurn = data.unifiedTurn;
+  }
+  if (Object.prototype.hasOwnProperty.call(data, 'pendingQuestion')) {
+    next.pendingQuestion = data.pendingQuestion;
+    if (next.turn && data.pendingQuestion) {
+      next.turn = {
+        ...next.turn,
+        question: {
+          id: data.pendingQuestion.id,
+          blocking: true,
+          text: data.pendingQuestion.question
+        }
+      };
+    } else if (next.turn && data.pendingQuestion === null) {
+      next.turn = { ...next.turn, question: null };
+    }
+  }
+  if (data.intervention) next.intervention = data.intervention;
+  const keepIntakeTalk =
+    typeof payload.userMessage === 'string' &&
+    (/to confirm/.test(payload.userMessage) ||
+      /to lock Task Input/.test(payload.userMessage) ||
+      payload.userMessage === stage01DraftAction());
+  if (keepIntakeTalk) {
+    next.composer = {
+      userMessage: payload.userMessage,
+      report: '',
+      lead: ''
+    };
+    next.userMessage = payload.userMessage;
+  } else if (data.composer && typeof data.composer.userMessage === 'string' && data.composer.userMessage.trim()) {
+    next.composer = {
+      ...data.composer,
+      report:
+        typeof data.composer.report === 'string' && data.composer.report.trim()
+          ? data.composer.report.trim()
+          : typeof payload.composer?.report === 'string'
+            ? payload.composer.report
+            : ''
+    };
+    next.userMessage = data.composer.userMessage.trim();
+  } else if (typeof data.userMessage === 'string' && data.userMessage.trim()) {
+    next.userMessage = data.userMessage.trim();
+  } else if (typeof data.intakeReview === 'string' && data.intakeReview.trim()) {
+    const review = data.intakeReview.trim();
+    if (!looksLikeWorkflowReview(review)) {
+      next.intakeReview = review;
+      next.userMessage = review;
+    }
+  }
+  if (typeof data.intakeReview === 'string' && data.intakeReview.trim() && !looksLikeWorkflowReview(data.intakeReview)) {
+    next.intakeReview = data.intakeReview.trim();
+  }
+  if (typeof data.originalTaskHash === 'string' && data.originalTaskHash) {
+    next.originalTaskHash = data.originalTaskHash;
+  }
+  if (Array.isArray(data.capabilitySkills) && data.capabilitySkills.length) {
+    next.capabilitySkills = data.capabilitySkills;
+  }
+  if (data.challenge && data.challenge.skillId) {
+    next.challenge = data.challenge;
+  }
+  if (data.verification) {
+    next.verification = data.verification;
+    if (next.turn && Array.isArray(next.turn.allowedActions) && data.verification.ready !== true) {
+      next.turn = {
+        ...next.turn,
+        allowedActions: next.turn.allowedActions.filter(
+          (a) => a !== 'generate_final' && a !== 'validate'
+        )
+      };
+    }
+  }
+  if (data.continuation) next.continuation = data.continuation;
+  if (data.recovery && data.recovery.action) {
+    next.recovery = data.recovery;
+    if (typeof data.recovery.userMessage === 'string' && data.recovery.userMessage.trim()) {
+      if (
+        data.recovery.action === 'ask' ||
+        data.recovery.action === 'blocked' ||
+        data.recovery.action === 'fallback_artifact'
+      ) {
+        next.userMessage = data.recovery.userMessage.trim();
+      }
+    }
+  }
+  if (next.intervention && next.intervention.ask === true && next.pendingQuestion?.id) {
+    next.message = `Ask ${next.pendingQuestion.id} in this chat. When they answer, run /savyre-answer with their words. Resume this same question if the chat restarts.`;
+  } else if (next.intervention && next.intervention.ask === false) {
+    next.message =
+      'Follow userMessage. Do not invent a question. Treat routine naming, layout, and stack choices as assumptions.';
+  }
+  return next;
 }
 
 function localContinueWarning(stderr) {
@@ -477,17 +1161,17 @@ function runSavyreGate(workspace, subcommand, opts) {
     let userMessage = '';
     if (subcommand === 'generate-final' && parsed.ok) {
       if (pinnedStage && gateStage && gateStage !== pinnedStage) {
-        message = `${message} Generate final targeted ${gateStage} but Chat pinned ${pinnedStage}. Do not run /savyre-validate. Ask the developer to run /savyre-start (no extra text). Wait.`.trim();
+        message = `${message} Generate final targeted ${gateStage} but Chat pinned ${pinnedStage}. Do not run validate. Speak userMessage. Wait for /savyre-next.`.trim();
         userMessage = chatUserMessage('mismatch');
       } else {
-        message = `${message} Ask the developer to run /savyre-validate in this chat for stage ${gateStage || pinnedStage}. Wait. Do not run it yourself. Chat did not unlock.`.trim();
+        message = `${message} Speak userMessage. Wait for the developer to run \`${checkSlash(gateStage || pinnedStage)}\`. Do not run it yourself. Chat did not unlock.`.trim();
         userMessage = chatUserMessage('ask_validate', { stageId: gateStage || pinnedStage });
       }
     } else if (subcommand === 'generate-final' && !parsed.ok) {
       userMessage = chatUserMessage('gate_failed');
     }
     if (subcommand === 'validate' && parsed.ok) {
-      message = `${message} Ask the developer whether to run /savyre-start (no extra text) for the new current stage. Wait. Do not start it yourself. Unlock is Savyre's result, not a Chat decision.`.trim();
+      message = `${message} Speak userMessage. Wait for /savyre-next. Do not start the next stage yourself. Unlock is Savyre's result, not a Chat decision.`.trim();
       const nextId = readPanelStageId(workspace);
       userMessage = chatUserMessage('ask_start_next', {
         stageId: gateStage || pinnedStage,
@@ -706,6 +1390,16 @@ async function appendEvidence(workspace, event) {
   }
 }
 
+function presentFailedGuard(reason, extra = {}) {
+  return {
+    ...extra,
+    ok: false,
+    mode: 'idle',
+    enforced: false,
+    reason: reason || extra.reason || 'guard failed'
+  };
+}
+
 function deny(userMessage, agentMessage) {
   return {
     permission: 'deny',
@@ -842,6 +1536,30 @@ async function aiOutputLooksWritten(workspace, stageId) {
   }
 }
 
+async function healOpenQuestionsNoneFile(workspace, stageId) {
+  const abs = path.join(workspace, 'savyre', 'stages', stageId, 'ai-output.md');
+  try {
+    const text = await fs.readFile(abs, 'utf8');
+    const match = text.match(
+      /((?:^|\n)(#{1,3})\s*Open Questions[ \t]*\n)([\s\S]*?)(?=\n#{1,3}\s|$)/i
+    );
+    if (!match) return false;
+    const body = (match[3] || '').trim();
+    const compact = body.replace(/\s+/g, ' ').trim();
+    if (/^no open questions identified\.?$/i.test(compact)) return false;
+    const stripped = compact.replace(/^[-*•]\s+/, '');
+    const emptyNone =
+      !body ||
+      (/^none\.?\b/i.test(stripped) && !body.includes('|') && !/\bOQ-\d+/i.test(body));
+    if (!emptyNone) return false;
+    const next = text.replace(match[0], `${match[1]}No open questions identified.\n`);
+    await fs.writeFile(abs, next.endsWith('\n') ? next : `${next}\n`, 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function resumePendingQuestion(pending, pendingQuestionId) {
   if (!pending.length) return null;
   const wanted = String(pendingQuestionId || '').trim().toUpperCase();
@@ -923,6 +1641,55 @@ function chatGenerateFinalBlockers({ stageId, aiReady, hasPendingBlocking, chall
   return { ok: true, kind: 'ask_generate_final' };
 }
 
+function isVerificationBeforeCompletionEnabled() {
+  return process.env.SAVYRE_VERIFICATION_BEFORE_COMPLETION !== '0';
+}
+
+function isChatContinuationEnabled() {
+  return process.env.SAVYRE_CHAT_CONTINUATION !== '0';
+}
+
+function evaluateVerification(input) {
+  const gate = chatGenerateFinalBlockers(input);
+  const stage02 = input.stageId === '02-requirement-analysis';
+  const stage03 = input.stageId === '03-codebase-discovery';
+  return {
+    schemaVersion: '1.0',
+    ready: gate.ok,
+    kind: gate.kind,
+    checks: {
+      draftReady: Boolean(input.aiReady),
+      openQuestionsResolved: !input.hasPendingBlocking,
+      challengeOk: stage02 ? input.challengeComplete === true : null,
+      evidenceOk: stage03 ? input.evidenceReady === true : null
+    },
+    canApprove: false,
+    canUnlockStage: false
+  };
+}
+
+function applyVerificationAllowedActions(actions, verification) {
+  if (!isVerificationBeforeCompletionEnabled() || !verification || verification.ready) {
+    return actions;
+  }
+  return (actions || []).filter((a) => a !== 'generate_final' && a !== 'validate');
+}
+
+function buildChatContinuation(checkpoint) {
+  if (!isChatContinuationEnabled() || !checkpoint) return null;
+  return {
+    schemaVersion: '1.0',
+    sessionId: checkpoint.sessionId || null,
+    stageId: checkpoint.stageId || null,
+    pendingQuestionId: checkpoint.pendingQuestionId || null,
+    activeSkill: checkpoint.activeSkill || null,
+    originalTaskHash: checkpoint.originalTaskHash || null,
+    originalTaskRevision:
+      typeof checkpoint.originalTaskRevision === 'number' ? checkpoint.originalTaskRevision : null,
+    artifactRevision: checkpoint.artifactRevision || 0
+  };
+}
+
 const CHAT_ARTIFACT_HEADINGS = {
   '01-task-input': `# Original Task
 # Explicit Requirements
@@ -956,7 +1723,7 @@ function chatWriteAiOutputMessage(stageId) {
     'Use these headings (a complete stage document, at least 200 characters, include ## Open Questions):',
     headings,
     'If there is no product-scope ambiguity, write `No open questions identified.` under ## Open Questions.',
-    'Then run savyre-guard.mjs turn. If no pending question, ask the developer to run /savyre-generate-final. Wait. Do not run generate-final, validate, or the next /savyre-start yourself.',
+    `Then run savyre-guard.mjs turn. If no pending question, ${waitForDeveloperSlash(lockSlash(stageId))} Do not run generate-final, validate, or the next stage yourself.`,
     'Do not click panel Stage AI. Do not invent ACCEPTED. Chat cannot unlock.'
   ].join(' ');
 }
@@ -985,35 +1752,31 @@ async function chatStageFollowupMessage(workspace, stageId, next) {
   if (!gate.ok) {
     return 'Follow turn.activeSkill. Do not run generate-final until that pass is done.';
   }
-  return 'Run verification-before-completion (turn.activeSkill). If the check fails, stay on this stage. If it passes, ask the developer to run /savyre-generate-final. Wait. Do not run it, validate, or /savyre-start yourself. Chat cannot unlock by itself.';
+  return `Run verification-before-completion (turn.activeSkill). If the check fails, stay on this stage. If it passes, ${waitForDeveloperSlash(lockSlash(stageId))} Do not run it, validate, or start the next stage yourself. Chat cannot unlock by itself.`;
 }
 
 function assignedTaskLooksFilled(inputText) {
-  const match = String(inputText || '').match(
-    /##\s*Assigned task(?: \(in your own words\))?[\s\S]*?(?=\n##\s|$)/i
-  );
-  if (!match) return false;
-  const body = match[0].replace(/##\s*Assigned task(?: \(in your own words\))?/i, '').trim();
-  const joined = body
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => {
-      if (!l || l === '-' || l === '*') return false;
-      if (/^summarize the task/i.test(l)) return false;
-      if (/^describe the (assigned )?task/i.test(l)) return false;
-      return true;
-    })
-    .join(' ')
-    .trim();
-  if (joined.length < 16) return false;
-  const workflowHits = [
-    /\b15 stages\b/i,
-    /official assignment/i,
-    /savyre\/stages/i,
-    /run stage ai/i,
-    /savyre ai coding workflow/i
-  ].filter((rx) => rx.test(joined)).length;
-  return workflowHits < 2;
+  return Boolean(productWordingFromStage01Input(inputText));
+}
+
+async function stage01SpokenFromDisk(workspace, opts = {}) {
+  const inputFile = await readStageInput(workspace, '01-task-input');
+  const assigned = extractAssignedTaskPlain(inputFile.text);
+  if (!assigned) return null;
+  const confirmed = Boolean(opts.confirmed);
+  const draftReady = Boolean(opts.draftReady);
+  const locked = Boolean(opts.locked);
+  const userMessage = locked
+    ? chatUserMessage('ask_validate', { stageId: '01-task-input' })
+    : buildStage01IntakeReview({
+        originalTask: assigned,
+        pendingQuestion: opts.pendingQuestion || null,
+        confirmed,
+        draftReady
+      });
+  const report = '';
+  const lead = '';
+  return { assigned, userMessage, report, lead };
 }
 
 async function stageChatWorkLooksDone(workspace, stageId) {
@@ -1051,8 +1814,8 @@ function buildSessionContext(manifest, source) {
       'Savyre stage `01-task-input` is enforced (read_write, input.md and ai-output.md).',
       `Use the Cursor skill \`${role}\`. Follow JSON \`turn.activeSkill\` when present. Do not invent Savyre methodology.`,
       filled
-        ? 'Assigned task already has developer wording. Confirm with /savyre-confirm. After confirm, write ai-output.md using the required headings filled from the Assigned task. Do not run panel Stage AI. Do not generate-final until ai-output.md exists.'
-        : 'FIRST MESSAGE: ask only what they want to build. Then wait. Do not write files yet. Official assignment / 15-stage text is Savyre process, not the product task. After they name a product, write only `## Assigned task (in your own words)` using their words. Ask them to confirm with /savyre-confirm. Do not confirm for them.',
+        ? 'Leftover or a one-liner under Assigned task is a scratch capture, not the final Assigned task. Replace `## Assigned task` with 2-4 short sentences plus a Product / UX / API / Data / Stack list from that prompt. Keep Official assignment unchanged. Speak that same Assigned task text, then speak userMessage. Wait for /savyre-next. After they continue, write ai-output.md from that Assigned task. Do not run panel Stage AI. Do not lock until ai-output.md exists.'
+        : 'FIRST MESSAGE: ask only what they want to build — unless JSON suggestedTask or intakeReview is already set, then replace Assigned task with the restatement, speak it, and wait for /savyre-next. Official assignment / 15-stage text is Savyre process, not the product. After they name a product, write the 2-4 sentences plus Product / UX / API / Data / Stack list under `## Assigned task`. Wait for /savyre-next. Do not confirm for them.',
       'Before confirm you may write only `input.md`. After confirm you may write `ai-output.md`. Cursor Agent cannot record ACCEPTED — that stays in the Savyre extension.'
     ].join('\n');
   }
@@ -1064,8 +1827,8 @@ function buildSessionContext(manifest, source) {
             manifest.stageId === '03-codebase-discovery'
               ? ' Also write evidence-map.json for observed findings only. Do not invent architecture on a greenfield repo.'
               : ' Do not add Confirmed Requirements or Functional Requirement Analysis — Savyre injects the Stage 01 contract.'
-          } If Generate final rejects the artifact, fix ai-output.md. Then ask the developer to run /savyre-generate-final. Wait. Do not run it yourself.`
-        : 'Read-only: do not edit application source. Do not write ai-output.md. Use the Savyre panel to run this stage. Then ask the developer to run /savyre-generate-final. Wait. Do not run it or validate yourself.';
+          } If Generate final rejects the artifact, fix ai-output.md. Speak userMessage. Wait for /savyre-next. Do not run it yourself.`
+        : 'Read-only: do not edit application source. Do not write ai-output.md. Use the Savyre panel to run this stage. Then speak userMessage and wait for /savyre-next. Do not run it or validate yourself.';
   const prev = source.previousStageId;
   const missingHint =
     source.kind === 'upstreamFinal'
@@ -1097,15 +1860,15 @@ function buildStopFollowup(manifest, source) {
     return assignedTaskLooksFilled(inputFile.text)
       ? [
           'Savyre stage `01-task-input` is still enforced. Use skill `savyre-task-input`.',
-          'Assigned task is written. After /savyre-confirm, write ai-output.md with the required headings. If no Open Questions remain, ask the developer to run /savyre-generate-final. Wait. Do not run it yourself.',
+          'Assigned task is written. After /savyre-next, write ai-output.md with the required headings. If no Open Questions remain, speak userMessage and wait for /savyre-next to lock. Do not run it yourself.',
           'Do not invent more sections. Do not set ACCEPTED. Do not run /savyre-stop until they accept there.'
         ].join(' ')
       : [
           'Savyre stage `01-task-input` is still enforced. Use skill `savyre-task-input`.',
-          'Ask only: What should we build? Wait for a product or feature in their words.',
+          'Speak userMessage once. Wait for a product or feature in their words. Do not ask the question again.',
           'Do not treat the official assignment or 15-stage workflow as the product task.',
           'Do not write Original Task, Explicit Requirements, or Open Questions.',
-          'After they answer, write only `## Assigned task (in your own words)` in `savyre/stages/01-task-input/input.md`.'
+          'After they answer, write the restatement (2-4 sentences plus Product / UX / API / Data / Stack) under `## Assigned task` in `savyre/stages/01-task-input/input.md`. Do not leave their raw leftover as Assigned task.'
         ].join(' ');
   }
   const prev = source.previousStageId;
@@ -1119,10 +1882,10 @@ function buildStopFollowup(manifest, source) {
         : `Continue from \`${inputFile.rel}\` (already injected).`;
   const workHint =
     manifest.stageId === '06-implementation'
-      ? 'Continue implementation in this chat. Write application files. Then ask the developer to run /savyre-generate-final. Wait. Do not run it yourself.'
+      ? 'Continue implementation in this chat. Write application files. Then speak userMessage and wait for /savyre-next. Do not run it yourself.'
       : manifest.stageId === '02-requirement-analysis' || manifest.stageId === '03-codebase-discovery'
-        ? `Write or fix \`savyre/stages/${manifest.stageId}/ai-output.md\` using the required headings. Ask remaining Open Questions in chat. Do not fill answers in developer-review.md. If none remain, ask the developer to run /savyre-generate-final. Wait. Do not run it yourself.`
-        : 'Do not write ai-output.md. Use the Savyre panel to run this stage, then ask the developer to run /savyre-generate-final. Wait. Do not run it or validate yourself.';
+        ? `Write or fix \`savyre/stages/${manifest.stageId}/ai-output.md\` using the required headings. Ask remaining Open Questions in chat. Do not fill answers in developer-review.md. If none remain, speak userMessage and wait for /savyre-next. Do not run it yourself.`
+        : 'Do not write ai-output.md. Use the Savyre panel to run this stage, then speak userMessage and wait for /savyre-next. Do not run it or validate yourself.';
   return [
     `Savyre stage \`${manifest.stageId}\` is still enforced. Continue in this chat using skill \`${role}\`.`,
     inputHint,
@@ -1189,6 +1952,18 @@ async function handleHook(input) {
   }
 
   if (event === 'stop') {
+    try {
+      await persistChatHookUsage({
+        workspace,
+        stageId: manifest.stageId,
+        executionId: manifest.executionId,
+        hookInput: input,
+        parse: brain?.parseChatHookUsage,
+        merge: brain?.mergeChatAiUsage
+      });
+    } catch {
+      /* token capture is best-effort */
+    }
     const status = String(input.status || 'completed');
     const loopCount = Number(input.loop_count || 0);
     if (status !== 'completed' || loopCount > 0) {
@@ -1214,6 +1989,15 @@ async function handleHook(input) {
       return {};
     }
     const source = await readChatSource(workspace, manifest.stageId);
+    if (manifest.stageId === '01-task-input' && !assignedTaskLooksFilled(source.file.text)) {
+      await appendEvidence(workspace, {
+        executionId: manifest.executionId,
+        hook: 'stop',
+        decision: 'note',
+        reason: 'waiting for product task; no follow-up'
+      });
+      return {};
+    }
     const followup_message = buildStopFollowup(manifest, source);
     await writeChatInjectState(workspace, {
       ...(prior || {}),
@@ -1253,7 +2037,7 @@ async function handleHook(input) {
       reason: 'shell_blocked'
     });
     return deny(
-      `Savyre ${manifest.stageId} does not allow shell. Terminal commands are blocked.`,
+      `${stageTitle(manifest.stageId)} does not allow terminal commands.`,
       'Do not run terminal commands. Use /savyre-stop to leave enforced mode. You cannot approve the stage.'
     );
   }
@@ -1544,24 +2328,73 @@ async function cmdStart(userText) {
     artifactTemplate: CHAT_ARTIFACT_HEADINGS[stageId] || null
   };
   if (leftover && !captureTask) bind.ignoredUserText = leftover;
-  if (leftover && captureTask) bind.suggestedTask = leftover;
+  if (leftover && captureTask) {
+    const product = productWordingFromRaw(leftover);
+    if (product) {
+      bind.suggestedTask = product;
+      if (!existing?.developerConfirmed) {
+        await persistAssignedTaskExact(workspace, product);
+      }
+    }
+  }
   let taskReady = Boolean(bind.suggestedTask);
   if (captureTask && !existing?.developerConfirmed && !taskReady) {
     const inputFile = await readStageInput(workspace, stageId);
     taskReady = assignedTaskLooksFilled(inputFile.text);
   }
+  let intakeSummary = null;
+  let intakeReport = '';
+  let intakeLead = '';
+  let capturedHash = existing?.originalTaskHash || null;
+  if (captureTask) {
+    const startText = typeof bind.suggestedTask === 'string' ? bind.suggestedTask.trim() : '';
+    const inputFile = await readStageInput(workspace, stageId);
+    const assigned = startText || extractAssignedTaskPlain(inputFile.text);
+    if (assigned) {
+      const source = startText ? 'start-text' : existing?.originalTaskSource || 'chat';
+      const tracked = trackOriginalTask({
+        text: assigned,
+        source,
+        previousHash: existing?.originalTaskHash,
+        previousRevision: existing?.originalTaskRevision
+      });
+      const latestCp =
+        (await readJsonIfPresent(path.join(workspace, CHAT_CHECKPOINT_REL))) || existing;
+      await writeCheckpoint(workspace, {
+        ...latestCp,
+        originalTaskHash: tracked.hash,
+        originalTaskSource: tracked.source,
+        originalTaskRevision: tracked.revision
+      });
+      capturedHash = tracked.hash;
+      intakeSummary = buildStage01IntakeReview({
+        originalTask: assigned,
+        pendingQuestion: pending?.question || null,
+        confirmed: Boolean(existing?.developerConfirmed),
+        draftReady: aiReady
+      });
+      intakeReport = '';
+      intakeLead = '';
+    }
+  }
   let message;
   if (bind.suggestedTask && captureTask && !existing?.developerConfirmed) {
-    message =
-      'Stage 01. A task draft was passed after /savyre-start. Write it only under Assigned task in input.md, then ask the developer to /savyre-confirm. Do not confirm for them. After confirm, write ai-output.md with the required headings so Generate final will not fail.';
+    message = TALK_FROM_ASSIGNED_THEN_CONFIRM;
   } else if (captureTask && !existing?.developerConfirmed) {
     message =
-      'Stage 01. Capture the assigned task if needed, then /savyre-confirm. After confirm, write ai-output.md from the Assigned task using artifactTemplate. Do not generate-final yet.';
+      'Stage 01. Capture the assigned task if needed, then wait for /savyre-next. After they continue, write ai-output.md from the Assigned task using artifactTemplate. Do not lock yet.';
+  } else if (
+    captureTask &&
+    existing?.developerConfirmed &&
+    aiReady &&
+    existing?.lastGenerateFinalStageId !== '01-task-input'
+  ) {
+    message = `Run verification-before-completion (turn.activeSkill). If the check passes, ${TALK_FROM_ASSIGNED_THEN_LOCK} Do not run lock, validate, or start the next stage yourself.`;
   } else {
     message = await chatStageFollowupMessage(workspace, stageId, pending);
   }
   if (bind.ignoredUserText) {
-    message = `Bound to ${stageId}. Extra text after /savyre-start was ignored — that is not a new Stage 01 task. Do not write input.md or ask /savyre-confirm. Work this stage. ${message}`;
+    message = `Bound to ${stageId}. Extra text after /savyre-start was ignored — that is not a new Task Input. Do not write input.md or ask confirm. Work this stage. ${message}`;
   }
   const userMessage = chatStartUserMessage({
     stageId,
@@ -1571,41 +2404,77 @@ async function cmdStart(userText) {
     suggestedTask: taskReady,
     ignoredUserText: Boolean(bind.ignoredUserText),
     challengeComplete: pass.challengeComplete,
-    evidenceReady: pass.evidenceReady
+    evidenceReady: pass.evidenceReady,
+    intakeSummary
   });
-  const gate = chatGenerateFinalBlockers({
-    stageId,
-    aiReady,
-    hasPendingBlocking: Boolean(pending),
-    challengeComplete: pass.challengeComplete,
-    evidenceReady: pass.evidenceReady
-  });
-  const allowedActions =
-    pending
-      ? ['answer', 'status', 'cancel']
-      : captureTask && !existing?.developerConfirmed
-        ? ['confirm', 'status', 'cancel']
-        : gate.ok
-          ? ['status', 'generate_final', 'validate', 'cancel']
-          : ['status', 'cancel'];
+  const verification = isVerificationBeforeCompletionEnabled()
+    ? evaluateVerification({
+        stageId,
+        aiReady,
+        hasPendingBlocking: Boolean(pending),
+        challengeComplete: pass.challengeComplete,
+        evidenceReady: pass.evidenceReady
+      })
+    : null;
+  const baseActions = pending
+    ? ['answer', 'status', 'cancel']
+    : captureTask && !existing?.developerConfirmed
+      ? ['confirm', 'status', 'cancel']
+      : ['status', 'generate_final', 'validate', 'cancel'];
+  const allowedActions = applyVerificationAllowedActions(baseActions, verification);
   const turnOut = turn ? { ...turn, allowedActions } : turn;
+  const continuation = buildChatContinuation({
+    ...(existing || {}),
+    sessionId,
+    stageId,
+    pendingQuestionId: pending?.id || existing?.pendingQuestionId || null,
+    activeSkill: turnOut?.activeSkill || existing?.activeSkill || null,
+    originalTaskHash: capturedHash || existing?.originalTaskHash,
+    originalTaskRevision: existing?.originalTaskRevision,
+    artifactRevision: existing?.artifactRevision || 0
+  });
   const extra = {
     pendingQuestion: pending,
     message,
     userMessage,
-    ...chatSkillFields(stageId, turnOut?.state, pass)
+    ...chatSkillFields(stageId, turnOut?.state, pass),
+    ...(capturedHash ? { originalTaskHash: capturedHash } : {}),
+    ...(verification ? { verification } : {}),
+    ...(continuation ? { continuation } : {}),
+    ...(intakeReport
+      ? { composer: { userMessage, report: intakeReport, lead: intakeLead } }
+      : {})
   };
   if (latestOk && latest) {
-    return { ...enforcedPayload(workspace, latest, turnOut), ...extra, ...bind };
+    return withUnifiedTurn(
+      { ...enforcedPayload(workspace, latest, turnOut), ...extra, ...bind },
+      workspace
+    );
   }
-  return {
-    ...(runOut || { mode: 'enforced', stageId }),
-    turn: turnOut,
-    canApprove: false,
-    canUnlockStage: false,
-    ...extra,
-    ...bind
-  };
+  if (runOut && runOut.mode === 'enforced') {
+    return withUnifiedTurn(
+      {
+        ...runOut,
+        turn: turnOut,
+        canApprove: false,
+        canUnlockStage: false,
+        ...extra,
+        ...bind
+      },
+      workspace
+    );
+  }
+  return withUserMessage(
+    presentFailedGuard(runOut?.reason || 'interactive execution unavailable', {
+      stageId,
+      turn: turnOut,
+      canApprove: false,
+      canUnlockStage: false,
+      ...extra,
+      ...bind
+    }),
+    chatUserMessage('recovery_fallback')
+  );
 }
 
 async function cmdStatus() {
@@ -1620,25 +2489,26 @@ async function cmdStatus() {
   const verified = await verifyManifest(manifest, workspace);
   if (!verified.ok) {
     return withUserMessage(
-      {
-        mode: 'idle',
-        reason: verified.reason,
+      presentFailedGuard(verified.reason, {
         stageId: manifest.stageId,
         executionId: manifest.executionId
-      },
+      }),
       chatUserMessage('lock_off')
     );
   }
-  return withUserMessage(
-    {
-      mode: 'enforced',
-      stageId: manifest.stageId,
-      executionId: manifest.executionId,
-      expiresAt: manifest.expiresAt,
-      writeMode: manifest.writeMode,
-      workflowId: manifest.workflowId
-    },
-    chatUserMessage('on_stage', { stageId: manifest.stageId })
+  return withUnifiedTurn(
+    withUserMessage(
+      {
+        mode: 'enforced',
+        stageId: manifest.stageId,
+        executionId: manifest.executionId,
+        expiresAt: manifest.expiresAt,
+        writeMode: manifest.writeMode,
+        workflowId: manifest.workflowId
+      },
+      chatUserMessage('on_stage', { stageId: manifest.stageId })
+    ),
+    workspace
   );
 }
 
@@ -1659,6 +2529,7 @@ async function readOrCreateCheckpoint(workspace, stageId, sessionId) {
   if (!existing || existing.stageId !== stageId) {
     const lastGf = existing?.lastGenerateFinalStageId;
     const lastGfAt = existing?.lastGenerateFinalAt;
+    const prev = existing;
     existing = {
       schemaVersion: '1.0',
       sessionId: sessionId || 'local',
@@ -1670,6 +2541,13 @@ async function readOrCreateCheckpoint(workspace, stageId, sessionId) {
       lastValidationCodes: [],
       ...(typeof lastGf === 'string' && lastGf.trim()
         ? { lastGenerateFinalStageId: lastGf.trim(), lastGenerateFinalAt: lastGfAt }
+        : {}),
+      ...(prev?.originalTaskHash
+        ? {
+            originalTaskHash: prev.originalTaskHash,
+            originalTaskSource: prev.originalTaskSource,
+            originalTaskRevision: prev.originalTaskRevision
+          }
         : {}),
       updatedAt: new Date().toISOString()
     };
@@ -1689,6 +2567,13 @@ async function writeCheckpoint(workspace, checkpoint) {
       ? {
           lastGenerateFinalStageId: lastGf.trim(),
           lastGenerateFinalAt: checkpoint.lastGenerateFinalAt || prev?.lastGenerateFinalAt
+        }
+      : {}),
+    ...(!checkpoint.originalTaskHash && prev?.originalTaskHash
+      ? {
+          originalTaskHash: prev.originalTaskHash,
+          originalTaskSource: prev.originalTaskSource,
+          originalTaskRevision: prev.originalTaskRevision
         }
       : {}),
     updatedAt: new Date().toISOString()
@@ -1952,23 +2837,49 @@ async function cmdTurn() {
     challengeComplete: pass.challengeComplete,
     evidenceReady: pass.evidenceReady
   });
-  return {
-    mode: 'turn',
-    skill: fields.skill,
-    cursorSkill: fields.cursorSkill,
-    activeSkill: turn.activeSkill || fields.activeSkill,
-    turn,
-    pendingQuestion: next,
-    unlocksStage: false,
-    message: next
-      ? `Ask ${next.id} in this chat. When they answer, run /savyre-answer with their words. Resume this same question if the chat restarts.`
-      : gate.ok
-        ? 'Run verification-before-completion (turn.activeSkill). If the check passes, ask the developer to run /savyre-generate-final. Wait. Do not run it, validate, or the next /savyre-start yourself. Savyre unlocks if Validate passes.'
-        : 'Follow turn.activeSkill. Do not run generate-final until that pass is done.',
-    userMessage: next
-      ? chatUserMessage('ask_question', { question: next.question })
-      : chatUserMessage(gate.kind, { stageId })
-  };
+  const confirmed = Boolean(existing?.developerConfirmed);
+  const locked = existing?.lastGenerateFinalStageId === stageId;
+  const spoken =
+    stageId === '01-task-input'
+      ? await stage01SpokenFromDisk(workspace, {
+          pendingQuestion: next?.question,
+          confirmed,
+          draftReady: aiReady,
+          locked
+        })
+      : null;
+  const awaitingConfirm = stageId === '01-task-input' && spoken && !confirmed && !next;
+  const awaitingLock =
+    stageId === '01-task-input' && spoken && confirmed && aiReady && !locked && !next;
+  const userMessage = next
+    ? chatUserMessage('ask_question', { question: next.question })
+    : spoken?.userMessage || chatUserMessage(gate.kind, { stageId });
+  const message = next
+    ? `Ask ${next.id} in this chat. When they answer, run /savyre-answer with their words. Resume this same question if the chat restarts.`
+    : awaitingConfirm
+      ? TALK_FROM_ASSIGNED_THEN_CONFIRM
+      : awaitingLock
+        ? `Run verification-before-completion (turn.activeSkill). If the check passes, ${TALK_FROM_ASSIGNED_THEN_LOCK} Do not run lock, validate, or start the next stage yourself. Savyre unlocks if Validate passes.`
+        : gate.ok
+          ? `Run verification-before-completion (turn.activeSkill). If the check passes, ${waitForDeveloperSlash(lockSlash(stageId))} Do not run it, validate, or start the next stage yourself. Savyre unlocks if Validate passes.`
+          : 'Follow turn.activeSkill. Do not lock until that pass is done.';
+  return withUnifiedTurn(
+    {
+      mode: 'turn',
+      skill: fields.skill,
+      cursorSkill: fields.cursorSkill,
+      activeSkill: turn.activeSkill || fields.activeSkill,
+      turn,
+      pendingQuestion: next,
+      unlocksStage: false,
+      message,
+      userMessage,
+      ...(spoken?.report
+        ? { composer: { userMessage, report: spoken.report, lead: spoken.lead || '' } }
+        : {})
+    },
+    workspace
+  );
 }
 
 async function cmdAnswer(questionIdOrAnswer, ...rest) {
@@ -2065,21 +2976,24 @@ async function cmdAnswer(questionIdOrAnswer, ...rest) {
     challengeComplete: pass.challengeComplete,
     evidenceReady: pass.evidenceReady
   });
-  return {
-    ok: true,
-    action: 'answer',
-    unlocksStage: false,
-    answeredId: applied.answeredId,
-    remaining: applied.remaining,
-    nextQuestion: applied.next,
-    turn,
-    message: applied.next
-      ? `Saved ${applied.answeredId}. Ask next: ${applied.next.id} — ${applied.next.question}`
-      : `Saved ${applied.answeredId}. Follow turn.activeSkill. Wait.`,
-    userMessage: applied.next
-      ? chatUserMessage('ask_question', { question: applied.next.question })
-      : chatUserMessage(gate.kind, { stageId })
-  };
+  return withUnifiedTurn(
+    {
+      ok: true,
+      action: 'answer',
+      unlocksStage: false,
+      answeredId: applied.answeredId,
+      remaining: applied.remaining,
+      nextQuestion: applied.next,
+      turn,
+      message: applied.next
+        ? `Saved ${applied.answeredId}. Ask next: ${applied.next.id} — ${applied.next.question}`
+        : `Saved ${applied.answeredId}. Follow turn.activeSkill. Wait.`,
+      userMessage: applied.next
+        ? chatUserMessage('ask_question', { question: applied.next.question })
+        : chatUserMessage(gate.kind, { stageId })
+    },
+    workspace
+  );
 }
 
 async function cmdConfirm() {
@@ -2107,8 +3021,8 @@ async function cmdConfirm() {
         unlocksStage: false,
         stageId: current,
         reason: current
-          ? `Confirm is Stage 01 only. The panel is on ${current}. Ask the developer to run /savyre-start with no extra task text. Wait. Do not start it yourself. Do not rewrite Stage 01 input.md.`
-          : 'Confirm is Stage 01 only. No currentStageId. Start a session in the Savyre panel first.'
+          ? `Confirm is Task Input only. The panel is on ${current}. Speak userMessage. Wait for /savyre-next. Do not start it yourself. Do not rewrite Task Input input.md.`
+          : 'Confirm is Task Input only. No currentStageId. Start a session in the Savyre panel first.'
       },
       current ? chatUserMessage('confirm_not_stage_01') : chatUserMessage('start_panel')
     );
@@ -2140,6 +3054,22 @@ async function cmdConfirm() {
     pendingQuestion: Boolean(next),
     aiReady: false
   });
+  const assigned = extractAssignedTaskPlain(input);
+  if (!assigned) {
+    return withUserMessage(
+      { ok: false, action: 'confirm', unlocksStage: false, reason: 'No assigned task to confirm' },
+      chatUserMessage('ask_what_to_build')
+    );
+  }
+  const existingCp = await readJsonIfPresent(path.join(workspace, CHAT_CHECKPOINT_REL));
+  const tracked = assigned
+    ? trackOriginalTask({
+        text: assigned,
+        source: existingCp?.originalTaskSource || 'chat',
+        previousHash: existingCp?.originalTaskHash,
+        previousRevision: existingCp?.originalTaskRevision
+      })
+    : null;
   const checkpoint = await writeCheckpoint(workspace, {
     schemaVersion: '1.0',
     sessionId: session?.sessionId || 'local',
@@ -2149,7 +3079,14 @@ async function cmdConfirm() {
     pendingQuestionId: next?.id || null,
     artifactRevision: 1,
     lastValidationCodes: [],
-    developerConfirmed: true
+    developerConfirmed: true,
+    ...(existingCp?.originalTaskHash || tracked
+      ? {
+          originalTaskHash: tracked?.hash || existingCp?.originalTaskHash,
+          originalTaskSource: tracked?.source || existingCp?.originalTaskSource,
+          originalTaskRevision: tracked?.revision || existingCp?.originalTaskRevision
+        }
+      : {})
   });
   const responsesFile = path.join(workspace, CHAT_RESPONSES_REL);
   let responses = { schemaVersion: '1.0', items: [] };
@@ -2175,11 +3112,20 @@ async function cmdConfirm() {
   const aiReady = await aiOutputLooksWritten(workspace, '01-task-input');
   const message = nextAfter
     ? `Task confirmed. Ask ${nextAfter.id} in this chat: ${nextAfter.question} When they answer, run /savyre-answer with their words.`
-    : await chatStageFollowupMessage(workspace, '01-task-input', null);
-  const userMessage = nextAfter
-    ? chatUserMessage('ask_question', { question: nextAfter.question })
-    : aiReady
-      ? chatUserMessage('ask_generate_final', { stageId: '01-task-input' })
+    : TALK_AFTER_CONFIRM_THEN_DRAFT;
+  const intakeReview = assigned
+    ? buildStage01IntakeReview({
+        originalTask: assigned,
+        pendingQuestion: nextAfter?.question || null,
+        confirmed: true,
+        draftReady: false
+      })
+    : null;
+  const intakeReport = '';
+  const userMessage = intakeReview
+    ? intakeReview
+    : nextAfter
+      ? chatUserMessage('ask_question', { question: nextAfter.question })
       : chatUserMessage('task_confirmed_draft');
   const afterState = deriveChatTurnState({
     pendingQuestion: Boolean(nextAfter),
@@ -2191,16 +3137,22 @@ async function cmdConfirm() {
     pendingQuestionId: nextAfter?.id || null,
     activeSkill: pickActiveSkillRef('01-task-input', afterState)
   });
-  return {
-    ok: true,
-    action: 'confirm',
-    unlocksStage: false,
-    nextQuestion: nextAfter,
-    artifactTemplate: CHAT_ARTIFACT_HEADINGS['01-task-input'],
-    message,
-    userMessage,
-    turn: turnFromCheckpoint(checkpointAfter)
-  };
+  return withUnifiedTurn(
+    {
+      ok: true,
+      action: 'confirm',
+      unlocksStage: false,
+      nextQuestion: nextAfter,
+      artifactTemplate: CHAT_ARTIFACT_HEADINGS['01-task-input'],
+      message,
+      userMessage,
+      ...(intakeReview ? { intakeReview } : {}),
+      ...(intakeReport ? { composer: { userMessage, report: intakeReport } } : {}),
+      ...(tracked?.hash ? { originalTaskHash: tracked.hash } : {}),
+      turn: turnFromCheckpoint(checkpointAfter)
+    },
+    workspace
+  );
 }
 
 async function cmdGenerateFinal() {
@@ -2231,12 +3183,47 @@ async function cmdGenerateFinal() {
       chatUserMessage(gate.kind, { stageId })
     );
   }
-  const result = runSavyreGate(workspace, 'generate-final', { stageId });
+  await healOpenQuestionsNoneFile(workspace, stageId);
+  let result = runSavyreGate(workspace, 'generate-final', { stageId });
+  if (!result.ok) {
+    const healed = await healOpenQuestionsNoneFile(workspace, stageId);
+    if (healed) {
+      result = runSavyreGate(workspace, 'generate-final', { stageId });
+    }
+  }
   const gfStage = result.data?.stageId || match.panelStageId;
   if (result.ok && gfStage) {
     await writeLastGenerateFinalStageId(workspace, gfStage);
   }
   return result;
+}
+
+/**
+ * One continue command. Order on the current stage:
+ * confirm (Task Input) → Chat writes draft / verification → lock (generate-final) → check (validate) → rebind next stage.
+ */
+async function cmdNext() {
+  const workspace = await findWorkspaceFromHook({ cwd: process.cwd() });
+  const panelStageId = readPanelStageId(workspace);
+  if (!panelStageId) {
+    return withUserMessage(
+      { ok: false, action: 'next', unlocksStage: false, reason: 'No currentStageId' },
+      chatUserMessage('start_panel')
+    );
+  }
+  const boundStageId = await readChatBoundStageId(workspace);
+  if (!boundStageId || boundStageId !== panelStageId) {
+    return cmdStart('');
+  }
+  const existing = await readJsonIfPresent(path.join(workspace, CHAT_CHECKPOINT_REL));
+  if (panelStageId === '01-task-input' && !existing?.developerConfirmed) {
+    return cmdConfirm();
+  }
+  const lastGf = await readLastGenerateFinalStageId(workspace);
+  if (lastGf === panelStageId) {
+    return cmdValidateGate();
+  }
+  return cmdGenerateFinal();
 }
 
 async function cmdValidateGate() {
@@ -2254,7 +3241,7 @@ async function cmdValidateGate() {
         boundStageId: match.boundStageId,
         lastGenerateFinalStageId: lastGf,
         data: { stageId: match.panelStageId },
-        reason: `Generate final was for ${lastGf} but Chat/panel are on ${match.panelStageId}. Do not validate ${lastGf}. Ask the developer to run /savyre-start (no extra text) for ${match.panelStageId}. Wait.`
+        reason: `Generate final was for ${lastGf} but Chat/panel are on ${match.panelStageId}. Do not validate ${lastGf}. Speak userMessage. Wait for /savyre-next.`
       },
       chatUserMessage('mismatch')
     );
@@ -2276,6 +3263,9 @@ async function cmdAction(actionName, ...rest) {
   }
   if (action === 'validate') {
     return cmdValidateGate();
+  }
+  if (action === 'next') {
+    return cmdNext();
   }
   return withUserMessage(
     { ok: false, action, unlocksStage: false, reason: `Unknown action ${action}` },
@@ -2308,6 +3298,7 @@ async function readStdin() {
 }
 
 async function main() {
+  brain = await loadSavyreBrain();
   const verb = process.argv[2];
   if (
     verb === 'run' ||
@@ -2316,9 +3307,19 @@ async function main() {
     verb === 'stop' ||
     verb === 'turn' ||
     verb === 'confirm' ||
+    verb === 'next' ||
     verb === 'answer' ||
     verb === 'action'
   ) {
+    if (!brain) {
+      reply(
+        withUserMessage(
+          { mode: 'idle', reason: 'savyre-brain-missing' },
+          BRAIN_MISSING_USER_MESSAGE
+        )
+      );
+      return;
+    }
     const out =
       verb === 'run'
         ? await cmdRun(process.argv[3])
@@ -2332,10 +3333,17 @@ async function main() {
                 ? await cmdTurn()
                 : verb === 'confirm'
                   ? await cmdConfirm()
-                  : verb === 'answer'
+                  : verb === 'next'
+                    ? await cmdNext()
+                    : verb === 'answer'
                     ? await cmdAnswer(...process.argv.slice(3))
                     : await cmdAction(process.argv[3], ...process.argv.slice(4));
     reply(out);
+    return;
+  }
+
+  if (!brain) {
+    reply(allow());
     return;
   }
 

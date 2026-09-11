@@ -30,4 +30,4 @@ Speak JSON `userMessage` when the guard returns it. Do not paste JSON. Do not me
 
 ## When the user is done
 
-Tell them to review in the **Savyre panel**, then run `/savyre-generate-final` and `/savyre-validate` here. `/savyre-stop` only clears the lock.
+Tell them to review in the **Savyre panel**, then run `/savyre-next` here. `/savyre-stop` only clears the lock.

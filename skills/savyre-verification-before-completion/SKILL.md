@@ -18,15 +18,17 @@ You are the **Verification before completion** role. You do not own Savyre's met
 
 ## While this role is active
 
-Before pointing the developer at `/savyre-generate-final`, check:
+Before pointing the developer at `/savyre-next` in `userMessage`, check:
 
 - The current-stage draft exists and is a complete document.
 - Blocking Open Questions have resolutions from `/savyre-answer`. If `turn.question` is set, resume **that same** question.
 - Stage 02: a valid `challenge-findings.json` exists. Blocking findings need an Open Question id.
 - Stage 03: a valid `evidence-map.json` exists. Greenfield may be empty or `not-found`. A repo with application code needs at least one application path (not `savyre/`, `.savyre/`, or `.cursor/`).
 
-If something is missing, stay on this stage and follow `userMessage`. Do not run generate-final, validate, or the next `/savyre-start`.
+If JSON `verification.ready` is false, stay on this stage and follow `userMessage`. Do not lock, validate, or start the next stage. Chat `allowedActions` will not list those gates until the check passes.
+
+If JSON `continuation.pendingQuestionId` is set, resume **that same** question.
 
 ## When the check passes
 
-Speak `userMessage` and **wait** for `/savyre-generate-final`. Do not run it, validate, or start the next stage yourself.
+Speak `userMessage` and **wait** for `/savyre-next`. Do not run it, validate, or start the next stage yourself.

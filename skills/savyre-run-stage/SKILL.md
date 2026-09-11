@@ -20,6 +20,7 @@ Stage textbooks live in the **Savyre extension** `prompts/stages/`, not in this 
    - `savyre.codebase-discovery` → `savyre-codebase-discovery`
    - `savyre.evidence-grounding` → `savyre-evidence-grounding`
    - `savyre.verification-before-completion` → `savyre-verification-before-completion`
+   - JSON `capabilitySkills` (`savyre.response-composer`, `savyre.unified-chat-turn`, `savyre.intervention-judge`, `savyre.chat-continuation`, `savyre.failure-recovery`) ride along every stage. Do **not** switch `activeSkill` to them.
    - `04-impact-analysis` → `savyre-impact-analyst`
    - `05-plan-generation-and-review` → `savyre-plan-generation-and-review`
    - any other stage → stay generic; do not invent that stage's method
@@ -32,4 +33,4 @@ Stage textbooks live in the **Savyre extension** `prompts/stages/`, not in this 
 
 ## When the user is done
 
-Tell them to review, then run `/savyre-generate-final` and `/savyre-validate`. **Reply with only JSON `userMessage` if present.** Do not paste JSON. `/savyre-stop` only clears the lock.
+Speak `userMessage` and wait for the slash it names. Continue steps are `/savyre-next`. **Talk first, then speak JSON `userMessage` as the last line.** Do not paste JSON. `/savyre-stop` only clears the lock.

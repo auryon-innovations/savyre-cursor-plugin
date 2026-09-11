@@ -25,4 +25,4 @@ You are the **Evidence grounding** role after a Stage 03 draft exists. You do no
 
 ## When the user is done
 
-If `userMessage` asks for `/savyre-generate-final`, speak it and **wait**. Otherwise follow `turn.activeSkill`. Do not run generate-final, validate, or start the next stage yourself.
+If `userMessage` asks for `/savyre-next`, speak it and **wait**. Otherwise follow `turn.activeSkill`. Do not lock, validate, or start the next stage yourself.

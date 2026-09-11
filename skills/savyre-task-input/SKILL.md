@@ -3,15 +3,35 @@ name: savyre-task-input
 description: Use when Stage 1 Task Input is enforced (stageId 01-task-input). Role instructions only. Do not invent Savyre task-input methodology.
 ---
 
-# Task input (plugin role)
+# Task Input
 
-You are the **Task Input** role. You do not own Savyre's analysis method, scoring, or acceptance.
+You are the **Task Input** role. You do not own scoring or acceptance. You cannot mark ACCEPTED or unlock the next stage.
 
-Use JSON `artifactTemplate` from `/savyre-start` / `/savyre-confirm` for `ai-output.md` headings. Do not wait for MCP. Do not accept the stage.
+Use JSON `artifactTemplate` from `/savyre-start` for `ai-output.md` headings. Do not wait for MCP. Do not accept the stage.
 
-## Talk to the user
+## Shared rules
 
-**Reply to the user with only JSON `userMessage` when the guard returns it.** Do not paste JSON. Do not mention `final.md`, `ai-output.md`, `input.md`, `developer-review.md`, artifact, or ACCEPTED. Slash commands are OK.
+1. The product is the developer's software task. Official assignment, Getting Started, and “complete 15 stages” text is Savyre process, not the product.
+2. Restate the product in 2–4 short sentences in your own voice, then a numbered list (Product, UX, API, Data, Stack — only headings the prompt supports). Do not invent features, stack, or auth that are not in the prompt.
+3. Write that same restatement under `## Assigned task (in your own words)` in `savyre/stages/01-task-input/input.md`. Replace leftover or the summarize-placeholder. Keep the Official assignment / Getting Started block unchanged.
+4. When writing `savyre/stages/01-task-input/ai-output.md`, copy the Assigned task body into `# Original Task` unchanged. Fill Explicit Requirements, Potential Assumptions, Acceptance Criteria, Constraints, Open Questions, Task Completeness, and Extraction Confidence from that same Assigned task. Never leave Generate Output placeholder text.
+5. Do not treat Official assignment as the assigned task. Do not confirm or unlock.
+
+## Chat
+
+- `userMessage` is the next slash. Do not paste JSON, hashes, `continuation`, or Official assignment.
+- Before confirm: write the restatement to Assigned task, speak that same restatement, then speak `userMessage` (`/savyre-next` to confirm). Do not list Original Task or other `ai-output.md` headings in chat.
+- After confirm: write a complete `ai-output.md`, run `turn`, speak 1–2 sentences from Assigned task, then speak the lock `userMessage`.
+- If Assigned task is empty and there is no leftover: ask what to build once, then wait.
+- Continue steps are `/savyre-next`. Do not run lock or the next stage yourself.
+
+## Stage AI (panel / CLI)
+
+- Write the Assigned task restatement in `input.md` if it is still a raw leftover or placeholder.
+- Write a complete `ai-output.md` now using the heading template in this prompt. No slash commands.
+- Do not spawn a Chat session. Do not unlock.
+
+Developer commands Chat may **ask** for: `/savyre-start`, `/savyre-next`, `/savyre-stop`. Do not ask for `/savyre-confirm`, `/savyre-generate-final`, or `/savyre-validate`.
 
 ## Before you start
 
@@ -21,17 +41,12 @@ Use JSON `artifactTemplate` from `/savyre-start` / `/savyre-confirm` for `ai-out
 
 ## While this role is active
 
-- **First message:** ask only what to build (product or feature). Then **wait**.
-- Do not write any file until the developer names a product task in this chat.
-- The official assignment / “complete 15 stages” text is Savyre process, not the product. Do not restate it as the assigned task.
-- After they answer, write **only** their wording under `## Assigned task (in your own words)` in `savyre/stages/01-task-input/input.md`.
-- Reflect the captured task and ask them to confirm. Do not confirm for them. Confirmation is `/savyre-confirm` or the panel **Confirm task** button.
-- After confirm, **write** `savyre/stages/01-task-input/ai-output.md` using `artifactTemplate`. Fill Original Task, Explicit Requirements, Potential Assumptions, Acceptance Criteria, and Constraints from the Assigned task. Include `## Open Questions` (`No open questions identified.` if none). The file must be a complete document so Generate final does not fail.
-- If Open Questions remain, ask one at a time (`/savyre-answer`). Do not edit `developer-review.md` yourself.
-- Do **not** run panel Stage AI. Do **not** `/savyre-generate-final` until `ai-output.md` exists with those headings.
-- If JSON `turn.activeSkill` is `savyre.verification-before-completion`, switch to `savyre-verification-before-completion`. Do not run generate-final until `userMessage` asks for `/savyre-generate-final`. Do not run it, validate, or `/savyre-start` for Stage 02 yourself.
+- Extra words after `/savyre-start` (when the panel is on Stage 01) **are** the product task. The guard may write those exact words under Assigned task first. Do **not** ask “What should we build?” when JSON has `suggestedTask`, `intakeReview`, or a captured `userMessage`. From that prompt, write the 2–4 sentences plus Product / UX / API / Data / Stack list, **save that same text as Assigned task in `input.md`**, then speak it and `userMessage`. Wait for `/savyre-next`.
+- After they answer (no leftover), write the restatement under Assigned task, run `savyre-guard.mjs turn`, speak that same text, then `userMessage`. Do **not** write `ai-output.md` until they run `/savyre-next`.
+- After they continue, write complete `ai-output.md` using `artifactTemplate` (Original Task = Assigned task unchanged). Run `turn`, talk 1–2 sentences from Assigned task, then speak `userMessage`.
+- If JSON `intervention.ask` is false, do not invent Open Questions. If `turn.activeSkill` is `savyre.verification-before-completion`, switch to that skill.
 - You must not record `ACCEPTED` or unlock.
 
 ## When the user is done
 
-Tell them Savyre unlocks after they run `/savyre-validate` successfully. Speak `userMessage` (ask `/savyre-start` for the next stage). **Wait.** Do not start it yourself. `/savyre-stop` only clears the lock.
+Speak `userMessage` (ask `/savyre-next`). **Wait.** `/savyre-stop` only clears the lock.

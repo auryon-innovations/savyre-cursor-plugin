@@ -22,6 +22,11 @@ savyre-cursor-plugin/
   skills/savyre-plan-generation-and-review/SKILL.md Stage 5 role (instructions only)
   skills/savyre-implementation/SKILL.md            Stage 6 role (instructions only)
   skills/savyre-run-stage/SKILL.md                 Generic runner (pick role skill)
+  skills/savyre-response-composer/SKILL.md         Shared spoken-copy skill (not a stage role)
+  skills/savyre-unified-chat-turn/SKILL.md         Shared turn adapter (not a stage role)
+  skills/savyre-intervention-judge/SKILL.md        Shared question filter (not a stage role)
+  skills/savyre-chat-continuation/SKILL.md         Shared resume record (not a stage role)
+  skills/savyre-failure-recovery/SKILL.md          Shared failure recovery (not a stage role)
   hooks/hooks.json
   hooks/savyre-guard.mjs
   schemas/execution-manifest.schema.json

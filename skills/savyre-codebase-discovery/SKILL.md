@@ -27,9 +27,9 @@ Use JSON `artifactTemplate` from `/savyre-start` for `ai-output.md` headings. Do
 - **Write** `savyre/stages/03-codebase-discovery/ai-output.md` using `artifactTemplate`. Greenfield: do not invent architecture.
 - If Generate final rejects it, fix `ai-output.md` here. Do not run panel Stage AI.
 - Ask remaining Open Questions one at a time (`/savyre-answer`). Do **not** edit `developer-review.md` yourself.
-- After the draft exists, stop. The next pass is `savyre-evidence-grounding` (that role writes `evidence-map.json`). Do not run generate-final until `userMessage` asks for it.
+- After the draft exists, stop. The next pass is `savyre-evidence-grounding` (that role writes `evidence-map.json`). Do not lock until `userMessage` asks for `/savyre-next`.
 - You must not record `ACCEPTED` or unlock.
 
 ## When the user is done
 
-Tell them Savyre unlocks after they run `/savyre-validate` successfully. Speak `userMessage` (ask `/savyre-start` for the next stage). **Wait.** Do not start it yourself. `/savyre-stop` only clears the lock.
+Speak `userMessage` (ask `/savyre-next` for the next stage). **Wait.** Do not start it yourself. `/savyre-stop` only clears the lock.

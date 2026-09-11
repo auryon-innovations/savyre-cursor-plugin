@@ -19,7 +19,7 @@ If this repo is checked out, you may run `hooks/savyre-guard.mjs` from `savyre-c
 
 ## What to say
 
-**Reply to the user with only JSON `userMessage` if present.** Otherwise say the lock is on only if `mode` is `enforced`. Do not paste JSON. Do not mention `final.md`, `ai-output.md`, artifact, or ACCEPTED.
+**Reply to the user with only JSON `userMessage` if present.** Otherwise say the lock is on only if `mode` is `enforced`. If JSON `unifiedTurn` is present, that next action matches the Savyre panel — do not invent another. Do not paste JSON. Do not mention `final.md`, `ai-output.md`, artifact, or ACCEPTED.
 
 2. Do not claim the stage is accepted.
 3. Do not write Savyre methodology. Do not edit application source files.

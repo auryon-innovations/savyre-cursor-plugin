@@ -11,7 +11,7 @@ Use JSON `artifactTemplate` from `/savyre-start` for `ai-output.md` headings. Do
 
 ## Talk to the user
 
-**Reply to the user with only JSON `userMessage` when the guard returns it.** Do not paste JSON. Do not mention `final.md`, `ai-output.md`, `input.md`, `developer-review.md`, artifact, or ACCEPTED. Slash commands are OK.
+**Reply to the user with only JSON `userMessage` when the guard returns it** (WP6 Stage 02 review). Do not paste JSON. Do not dump `ai-output.md`. Speak `composer.details` or `composer.diagnostic` only if they ask. Do not mention `final.md`, `ai-output.md`, `input.md`, `developer-review.md`, artifact, or ACCEPTED. Slash commands are OK.
 
 ## Before you start
 
@@ -27,9 +27,9 @@ Use JSON `artifactTemplate` from `/savyre-start` for `ai-output.md` headings. Do
 - **Write** `savyre/stages/02-requirement-analysis/ai-output.md` using `artifactTemplate`, filled from Stage 01 `final.md`. Do **not** add `## Confirmed Requirements` or `## Functional Requirement Analysis`. Include `## Open Questions`.
 - If Generate final rejects it, fix `ai-output.md` here. Do not run panel Stage AI.
 - Ask remaining Open Questions one at a time (`/savyre-answer`). Do **not** edit `developer-review.md` yourself.
-- After the draft exists, stop. The next pass is `savyre-requirement-challenge`. Do not write `challenge-findings.json` in this role. Do not run generate-final until `userMessage` asks for it.
+- After the draft exists, stop. The next pass is `savyre-requirement-challenge`. Do not write `challenge-findings.json` in this role. Do not lock until `userMessage` asks for `/savyre-next`.
 - You must not record `ACCEPTED` or unlock.
 
 ## When the user is done
 
-Tell them Savyre unlocks after they run `/savyre-validate` successfully. Speak `userMessage` (ask `/savyre-start` for the next stage). **Wait.** Do not start it yourself. `/savyre-stop` only clears the lock.
+Speak `userMessage` (ask `/savyre-next` for the next stage). **Wait.** Do not start it yourself. `/savyre-stop` only clears the lock.

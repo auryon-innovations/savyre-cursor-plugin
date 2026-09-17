@@ -12,8 +12,27 @@ const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 
 export const BRAIN_MISSING_USER_MESSAGE = 'Savyre is not available here. Use the Savyre panel.';
 
+const FALLBACK_REQUIRED_EXPORTS = [
+  'chatUserMessage',
+  'chatStartUserMessage',
+  'deriveChatTurnState',
+  'stageTitle',
+  'buildStage01IntakeReview',
+  'CHAT_PRIMARY_SKILL_ID',
+  'CHAT_SPECIALIZED_SKILL_ID',
+  'CHAT_SPECIALIZED_STATES',
+  'CHAT_VERIFY_SKILL_ID',
+  'RUN_CONFIG_VERSION'
+];
+
 function indexAt(root) {
   return path.join(root, 'dist', 'index.js');
+}
+
+function resolveIndexPath(root) {
+  if (root.endsWith(`${path.sep}index.js`) || root.endsWith('/index.js')) return root;
+  if (existsSync(path.join(root, 'index.js'))) return path.join(root, 'index.js');
+  return indexAt(root);
 }
 
 function runConfigRoots() {
@@ -43,27 +62,133 @@ function runConfigRoots() {
   return roots;
 }
 
-export function resolveSavyreBrainIndex() {
+function exportPresent(mod, name) {
+  if (!(name in mod)) return false;
+  const value = mod[name];
+  if (typeof value === 'function') return true;
+  if (name.startsWith('CHAT_') || name === 'RUN_CONFIG_VERSION') {
+    return value !== undefined && value !== null;
+  }
+  return typeof value === 'function';
+}
+
+function validateBrainModule(mod) {
+  if (typeof mod?.validatePluginBrainModule === 'function') {
+    return mod.validatePluginBrainModule(mod);
+  }
+  const missing = FALLBACK_REQUIRED_EXPORTS.filter((name) => !exportPresent(mod, name));
+  return {
+    ok: missing.length === 0,
+    capabilityVersion: '1.0.0',
+    missing,
+    runConfigVersion: typeof mod?.RUN_CONFIG_VERSION === 'string' ? mod.RUN_CONFIG_VERSION : undefined
+  };
+}
+
+export function enumerateBrainCandidates() {
+  const seen = new Set();
+  const candidates = [];
   for (const root of runConfigRoots()) {
-    const abs = root.endsWith(`${path.sep}index.js`) || root.endsWith('/index.js')
-      ? root
-      : existsSync(path.join(root, 'index.js'))
-        ? path.join(root, 'index.js')
-        : indexAt(root);
-    if (existsSync(abs)) return abs;
+    const indexPath = resolveIndexPath(root);
+    const key = indexPath.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    candidates.push({
+      root,
+      indexPath,
+      exists: existsSync(indexPath)
+    });
+  }
+  return candidates;
+}
+
+export async function inspectBrainCandidate(candidate) {
+  if (!candidate.exists) {
+    return {
+      ...candidate,
+      status: 'missing',
+      ok: false,
+      missing: [],
+      error: 'index.js not found'
+    };
+  }
+  try {
+    const mod = await import(`${pathToFileURL(candidate.indexPath).href}?t=${Date.now()}`);
+    const validation = validateBrainModule(mod);
+    return {
+      ...candidate,
+      status: validation.ok ? 'compatible' : 'incompatible',
+      ok: validation.ok,
+      missing: validation.missing,
+      capabilityVersion: validation.capabilityVersion,
+      runConfigVersion: validation.runConfigVersion
+    };
+  } catch (error) {
+    return {
+      ...candidate,
+      status: 'load_error',
+      ok: false,
+      missing: [],
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+export async function resolveSavyreBrainCandidates() {
+  const listed = enumerateBrainCandidates();
+  const inspected = [];
+  for (const candidate of listed) {
+    inspected.push(await inspectBrainCandidate(candidate));
+  }
+  return inspected;
+}
+
+export function resolveSavyreBrainIndex(candidates = null) {
+  const list = candidates || enumerateBrainCandidates();
+  for (const candidate of list) {
+    if (candidate.exists) return candidate.indexPath;
   }
   return null;
 }
 
 let cached = null;
+let cachedReport = null;
+
+export async function buildSavyreRuntimeReport() {
+  const candidates = await resolveSavyreBrainCandidates();
+  const selected = candidates.find((c) => c.ok) || null;
+  return {
+    ok: Boolean(selected),
+    capabilityVersion: selected?.capabilityVersion || '1.0.0',
+    runConfigVersion: selected?.runConfigVersion || null,
+    selected: selected
+      ? {
+          indexPath: selected.indexPath,
+          root: selected.root,
+          runConfigVersion: selected.runConfigVersion || null
+        }
+      : null,
+    candidates: candidates.map((c) => ({
+      root: c.root,
+      indexPath: c.indexPath,
+      status: c.status,
+      ok: c.ok,
+      missing: c.missing || [],
+      runConfigVersion: c.runConfigVersion || null,
+      error: c.error || null
+    }))
+  };
+}
 
 export async function loadSavyreBrain() {
   if (cached) return cached;
-  const abs = resolveSavyreBrainIndex();
-  if (!abs) return null;
+  const report = await buildSavyreRuntimeReport();
+  cachedReport = report;
+  if (!report.selected) return null;
   try {
-    const mod = await import(pathToFileURL(abs).href);
-    if (typeof mod.chatUserMessage !== 'function') return null;
+    const mod = await import(pathToFileURL(report.selected.indexPath).href);
+    const validation = validateBrainModule(mod);
+    if (!validation.ok) return null;
     cached = mod;
     return cached;
   } catch {
@@ -71,6 +196,11 @@ export async function loadSavyreBrain() {
   }
 }
 
+export function getSavyreRuntimeReport() {
+  return cachedReport;
+}
+
 export function resetSavyreBrainCache() {
   cached = null;
+  cachedReport = null;
 }

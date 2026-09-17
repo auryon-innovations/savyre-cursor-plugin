@@ -1,0 +1,359 @@
+{
+  "version": "1.1.0-candidate",
+  "workflow": "seven-stage-proposed",
+  "status": "not-installed; runtime compatibility unassessed",
+  "primary_skills": [
+    "savyre-stage-build-review",
+    "savyre-stage-code-discovery",
+    "savyre-stage-delivery-readiness",
+    "savyre-stage-handoff",
+    "savyre-stage-implementation-plan",
+    "savyre-stage-task-definition",
+    "savyre-stage-test-resolve"
+  ],
+  "reusable_skills": [
+    "savyre-requirement-challenge",
+    "savyre-evidence-grounding",
+    "savyre-response-composer",
+    "savyre-chat-continuation",
+    "savyre-failure-recovery",
+    "savyre-intervention-judge",
+    "savyre-unified-chat-turn",
+    "savyre-verification-before-completion",
+    "savyre-run-stage"
+  ],
+  "dedicated_passes": {
+    "S01": {
+      "skill": "savyre-requirement-challenge",
+      "when": "after_analysis_before_confirmation"
+    },
+    "S02": {
+      "skill": "savyre-evidence-grounding",
+      "when": "after_discovery_before_impact"
+    }
+  },
+  "cross_stage_consumers": [
+    "savyre-response-composer",
+    "savyre-chat-continuation",
+    "savyre-failure-recovery",
+    "savyre-intervention-judge",
+    "savyre-unified-chat-turn",
+    "savyre-verification-before-completion",
+    "savyre-run-stage"
+  ],
+  "entries": [
+    {
+      "name": "savyre-chat-continuation",
+      "entry": "skills/savyre-chat-continuation/SKILL.md",
+      "kind": "reusable",
+      "files": [
+        {
+          "path": "skills/savyre-chat-continuation/SKILL.md",
+          "sha256": "acd2115d8ea31d2e754731772f70eb61838825dc3ac5efb686b46625d9648a55"
+        },
+        {
+          "path": "skills/savyre-chat-continuation/references/invocation-map.md",
+          "sha256": "98ba508bf41d6977393cc774c0e7ed49760b131324e79a275463a7bc4a3d97b7"
+        },
+        {
+          "path": "skills/savyre-chat-continuation/references/runtime-boundary.md",
+          "sha256": "4b752e321a85300af9a2a3fc833b6304af93f5ae48aee2358baa0ca64f32dba2"
+        }
+      ]
+    },
+    {
+      "name": "savyre-evidence-grounding",
+      "entry": "skills/savyre-evidence-grounding/SKILL.md",
+      "kind": "reusable",
+      "files": [
+        {
+          "path": "skills/savyre-evidence-grounding/SKILL.md",
+          "sha256": "66f8b8e75f22e54c43da7124633e8f32ccf3fc41ea4b8fc696acaea94e926513"
+        },
+        {
+          "path": "skills/savyre-evidence-grounding/references/invocation-map.md",
+          "sha256": "98ba508bf41d6977393cc774c0e7ed49760b131324e79a275463a7bc4a3d97b7"
+        },
+        {
+          "path": "skills/savyre-evidence-grounding/references/runtime-boundary.md",
+          "sha256": "4b752e321a85300af9a2a3fc833b6304af93f5ae48aee2358baa0ca64f32dba2"
+        }
+      ]
+    },
+    {
+      "name": "savyre-failure-recovery",
+      "entry": "skills/savyre-failure-recovery/SKILL.md",
+      "kind": "reusable",
+      "files": [
+        {
+          "path": "skills/savyre-failure-recovery/SKILL.md",
+          "sha256": "c138d7acd835e3db3c46335af263dfb096ff2edaed80c68cdd0f5cb6f9676bf6"
+        },
+        {
+          "path": "skills/savyre-failure-recovery/references/invocation-map.md",
+          "sha256": "98ba508bf41d6977393cc774c0e7ed49760b131324e79a275463a7bc4a3d97b7"
+        },
+        {
+          "path": "skills/savyre-failure-recovery/references/runtime-boundary.md",
+          "sha256": "4b752e321a85300af9a2a3fc833b6304af93f5ae48aee2358baa0ca64f32dba2"
+        }
+      ]
+    },
+    {
+      "name": "savyre-intervention-judge",
+      "entry": "skills/savyre-intervention-judge/SKILL.md",
+      "kind": "reusable",
+      "files": [
+        {
+          "path": "skills/savyre-intervention-judge/SKILL.md",
+          "sha256": "8cd3ea2e76e303fabffa59b5a04837c0cf51e8d412d5401fe99cfd07221973f3"
+        },
+        {
+          "path": "skills/savyre-intervention-judge/references/invocation-map.md",
+          "sha256": "98ba508bf41d6977393cc774c0e7ed49760b131324e79a275463a7bc4a3d97b7"
+        },
+        {
+          "path": "skills/savyre-intervention-judge/references/runtime-boundary.md",
+          "sha256": "4b752e321a85300af9a2a3fc833b6304af93f5ae48aee2358baa0ca64f32dba2"
+        }
+      ]
+    },
+    {
+      "name": "savyre-requirement-challenge",
+      "entry": "skills/savyre-requirement-challenge/SKILL.md",
+      "kind": "reusable",
+      "files": [
+        {
+          "path": "skills/savyre-requirement-challenge/SKILL.md",
+          "sha256": "671cd579f85929ac690127ffd715c423cd54bc18f1739e6963065d64a61fe980"
+        },
+        {
+          "path": "skills/savyre-requirement-challenge/references/invocation-map.md",
+          "sha256": "98ba508bf41d6977393cc774c0e7ed49760b131324e79a275463a7bc4a3d97b7"
+        },
+        {
+          "path": "skills/savyre-requirement-challenge/references/runtime-boundary.md",
+          "sha256": "4b752e321a85300af9a2a3fc833b6304af93f5ae48aee2358baa0ca64f32dba2"
+        }
+      ]
+    },
+    {
+      "name": "savyre-response-composer",
+      "entry": "skills/savyre-response-composer/SKILL.md",
+      "kind": "reusable",
+      "files": [
+        {
+          "path": "skills/savyre-response-composer/SKILL.md",
+          "sha256": "0a1683fb56c5333e91ca285e288d18bd5507562b799945d90196f3df658787c7"
+        },
+        {
+          "path": "skills/savyre-response-composer/references/invocation-map.md",
+          "sha256": "98ba508bf41d6977393cc774c0e7ed49760b131324e79a275463a7bc4a3d97b7"
+        },
+        {
+          "path": "skills/savyre-response-composer/references/runtime-boundary.md",
+          "sha256": "4b752e321a85300af9a2a3fc833b6304af93f5ae48aee2358baa0ca64f32dba2"
+        }
+      ]
+    },
+    {
+      "name": "savyre-run-stage",
+      "entry": "skills/savyre-run-stage/SKILL.md",
+      "kind": "reusable",
+      "files": [
+        {
+          "path": "skills/savyre-run-stage/SKILL.md",
+          "sha256": "6434ae52b054b58e145c99e1c94e4b27cb574e90321b241c46546a00f8118fa9"
+        },
+        {
+          "path": "skills/savyre-run-stage/references/invocation-map.md",
+          "sha256": "98ba508bf41d6977393cc774c0e7ed49760b131324e79a275463a7bc4a3d97b7"
+        },
+        {
+          "path": "skills/savyre-run-stage/references/runtime-boundary.md",
+          "sha256": "4b752e321a85300af9a2a3fc833b6304af93f5ae48aee2358baa0ca64f32dba2"
+        }
+      ]
+    },
+    {
+      "name": "savyre-stage-build-review",
+      "entry": "skills/savyre-stage-build-review/SKILL.md",
+      "kind": "primary",
+      "files": [
+        {
+          "path": "skills/savyre-stage-build-review/SKILL.md",
+          "sha256": "9df329af0de98a083596a92ec702a3ec7529cf9118195ec8e2848d36589c845c"
+        },
+        {
+          "path": "skills/savyre-stage-build-review/references/invocation-map.md",
+          "sha256": "98ba508bf41d6977393cc774c0e7ed49760b131324e79a275463a7bc4a3d97b7"
+        },
+        {
+          "path": "skills/savyre-stage-build-review/references/runtime-boundary.md",
+          "sha256": "4b752e321a85300af9a2a3fc833b6304af93f5ae48aee2358baa0ca64f32dba2"
+        }
+      ]
+    },
+    {
+      "name": "savyre-stage-code-discovery",
+      "entry": "skills/savyre-stage-code-discovery/SKILL.md",
+      "kind": "primary",
+      "files": [
+        {
+          "path": "skills/savyre-stage-code-discovery/SKILL.md",
+          "sha256": "dbce3831bffbe828ab15911f5e03773884fcb6ea69dcb833c2be4101a99232fb"
+        },
+        {
+          "path": "skills/savyre-stage-code-discovery/references/invocation-map.md",
+          "sha256": "98ba508bf41d6977393cc774c0e7ed49760b131324e79a275463a7bc4a3d97b7"
+        },
+        {
+          "path": "skills/savyre-stage-code-discovery/references/runtime-boundary.md",
+          "sha256": "4b752e321a85300af9a2a3fc833b6304af93f5ae48aee2358baa0ca64f32dba2"
+        }
+      ]
+    },
+    {
+      "name": "savyre-stage-delivery-readiness",
+      "entry": "skills/savyre-stage-delivery-readiness/SKILL.md",
+      "kind": "primary",
+      "files": [
+        {
+          "path": "skills/savyre-stage-delivery-readiness/SKILL.md",
+          "sha256": "6954017f279c8b4ac38b7f6c0d2f4dbe5d6796666dd53f0ac49a0f1ccba44a33"
+        },
+        {
+          "path": "skills/savyre-stage-delivery-readiness/references/invocation-map.md",
+          "sha256": "98ba508bf41d6977393cc774c0e7ed49760b131324e79a275463a7bc4a3d97b7"
+        },
+        {
+          "path": "skills/savyre-stage-delivery-readiness/references/runtime-boundary.md",
+          "sha256": "4b752e321a85300af9a2a3fc833b6304af93f5ae48aee2358baa0ca64f32dba2"
+        }
+      ]
+    },
+    {
+      "name": "savyre-stage-handoff",
+      "entry": "skills/savyre-stage-handoff/SKILL.md",
+      "kind": "primary",
+      "files": [
+        {
+          "path": "skills/savyre-stage-handoff/SKILL.md",
+          "sha256": "319a58ba57e495c54390d47183bb29434292a6177c00876401da81d52ba29fd8"
+        },
+        {
+          "path": "skills/savyre-stage-handoff/references/invocation-map.md",
+          "sha256": "98ba508bf41d6977393cc774c0e7ed49760b131324e79a275463a7bc4a3d97b7"
+        },
+        {
+          "path": "skills/savyre-stage-handoff/references/runtime-boundary.md",
+          "sha256": "4b752e321a85300af9a2a3fc833b6304af93f5ae48aee2358baa0ca64f32dba2"
+        }
+      ]
+    },
+    {
+      "name": "savyre-stage-implementation-plan",
+      "entry": "skills/savyre-stage-implementation-plan/SKILL.md",
+      "kind": "primary",
+      "files": [
+        {
+          "path": "skills/savyre-stage-implementation-plan/SKILL.md",
+          "sha256": "82d3810759e5c490f5a2b7c9e0d2f461da9ad5fe76482518af40334c8b35aeb7"
+        },
+        {
+          "path": "skills/savyre-stage-implementation-plan/references/invocation-map.md",
+          "sha256": "98ba508bf41d6977393cc774c0e7ed49760b131324e79a275463a7bc4a3d97b7"
+        },
+        {
+          "path": "skills/savyre-stage-implementation-plan/references/runtime-boundary.md",
+          "sha256": "4b752e321a85300af9a2a3fc833b6304af93f5ae48aee2358baa0ca64f32dba2"
+        }
+      ]
+    },
+    {
+      "name": "savyre-stage-task-definition",
+      "entry": "skills/savyre-stage-task-definition/SKILL.md",
+      "kind": "primary",
+      "files": [
+        {
+          "path": "skills/savyre-stage-task-definition/SKILL.md",
+          "sha256": "e743f9456e8791bb2aad13a0bde28200684b97028338a87994654f1f0ff096e6"
+        },
+        {
+          "path": "skills/savyre-stage-task-definition/references/invocation-map.md",
+          "sha256": "98ba508bf41d6977393cc774c0e7ed49760b131324e79a275463a7bc4a3d97b7"
+        },
+        {
+          "path": "skills/savyre-stage-task-definition/references/runtime-boundary.md",
+          "sha256": "4b752e321a85300af9a2a3fc833b6304af93f5ae48aee2358baa0ca64f32dba2"
+        }
+      ]
+    },
+    {
+      "name": "savyre-stage-test-resolve",
+      "entry": "skills/savyre-stage-test-resolve/SKILL.md",
+      "kind": "primary",
+      "files": [
+        {
+          "path": "skills/savyre-stage-test-resolve/SKILL.md",
+          "sha256": "463595743fd674c921c20733b760d4f4f1bd9e7edc65bf8b0b9eb2ca5333cb6e"
+        },
+        {
+          "path": "skills/savyre-stage-test-resolve/references/invocation-map.md",
+          "sha256": "98ba508bf41d6977393cc774c0e7ed49760b131324e79a275463a7bc4a3d97b7"
+        },
+        {
+          "path": "skills/savyre-stage-test-resolve/references/runtime-boundary.md",
+          "sha256": "4b752e321a85300af9a2a3fc833b6304af93f5ae48aee2358baa0ca64f32dba2"
+        }
+      ]
+    },
+    {
+      "name": "savyre-unified-chat-turn",
+      "entry": "skills/savyre-unified-chat-turn/SKILL.md",
+      "kind": "reusable",
+      "files": [
+        {
+          "path": "skills/savyre-unified-chat-turn/SKILL.md",
+          "sha256": "cec960a3d83c05c5104cbd2872d85c95f1d8cfb9bc99716f4ba123f37b930ab2"
+        },
+        {
+          "path": "skills/savyre-unified-chat-turn/references/invocation-map.md",
+          "sha256": "98ba508bf41d6977393cc774c0e7ed49760b131324e79a275463a7bc4a3d97b7"
+        },
+        {
+          "path": "skills/savyre-unified-chat-turn/references/runtime-boundary.md",
+          "sha256": "4b752e321a85300af9a2a3fc833b6304af93f5ae48aee2358baa0ca64f32dba2"
+        }
+      ]
+    },
+    {
+      "name": "savyre-verification-before-completion",
+      "entry": "skills/savyre-verification-before-completion/SKILL.md",
+      "kind": "reusable",
+      "files": [
+        {
+          "path": "skills/savyre-verification-before-completion/SKILL.md",
+          "sha256": "6a16d13f9024c29d7b04390634fb75f10b6a6d41aa5ea9a425827b3a5e8dfb4a"
+        },
+        {
+          "path": "skills/savyre-verification-before-completion/references/invocation-map.md",
+          "sha256": "98ba508bf41d6977393cc774c0e7ed49760b131324e79a275463a7bc4a3d97b7"
+        },
+        {
+          "path": "skills/savyre-verification-before-completion/references/runtime-boundary.md",
+          "sha256": "4b752e321a85300af9a2a3fc833b6304af93f5ae48aee2358baa0ca64f32dba2"
+        }
+      ]
+    }
+  ],
+  "stage_primary_map": {
+    "S01": "savyre-stage-task-definition",
+    "S02": "savyre-stage-code-discovery",
+    "S03": "savyre-stage-implementation-plan",
+    "S04": "savyre-stage-build-review",
+    "S05": "savyre-stage-test-resolve",
+    "S06": "savyre-stage-delivery-readiness",
+    "S07": "savyre-stage-handoff"
+  }
+}

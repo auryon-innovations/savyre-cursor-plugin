@@ -13,7 +13,11 @@ import os from 'os';
 import path from 'path';
 import { spawnSync } from 'child_process';
 import { fileURLToPath } from 'url';
-import { BRAIN_MISSING_USER_MESSAGE, loadSavyreBrain } from './savyre-brain.mjs';
+import {
+  BRAIN_MISSING_USER_MESSAGE,
+  getSavyreRuntimeReport,
+  loadSavyreBrain
+} from './savyre-brain.mjs';
 import { persistChatHookUsage } from './savyre-chat-usage.mjs';
 
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -27,7 +31,14 @@ const STAGE_FIXTURES = {
   '03-codebase-discovery': path.join(PLUGIN_ROOT, 'fixtures', 'codebase-discovery.manifest.json'),
   '04-impact-analysis': path.join(PLUGIN_ROOT, 'fixtures', 'impact-analysis.manifest.json'),
   '05-plan-generation-and-review': path.join(PLUGIN_ROOT, 'fixtures', 'plan-generation.manifest.json'),
-  '06-implementation': path.join(PLUGIN_ROOT, 'fixtures', 'implementation.manifest.json')
+  '06-implementation': path.join(PLUGIN_ROOT, 'fixtures', 'implementation.manifest.json'),
+  's01-task-definition': path.join(PLUGIN_ROOT, 'fixtures', 's01-task-definition.manifest.json'),
+  's02-code-discovery': path.join(PLUGIN_ROOT, 'fixtures', 's02-code-discovery.manifest.json'),
+  's03-implementation-plan': path.join(PLUGIN_ROOT, 'fixtures', 's03-implementation-plan.manifest.json'),
+  's04-build-review': path.join(PLUGIN_ROOT, 'fixtures', 's04-build-review.manifest.json'),
+  's05-test-resolve': path.join(PLUGIN_ROOT, 'fixtures', 's05-test-resolve.manifest.json'),
+  's06-delivery-readiness': path.join(PLUGIN_ROOT, 'fixtures', 's06-delivery-readiness.manifest.json'),
+  's07-handoff': path.join(PLUGIN_ROOT, 'fixtures', 's07-handoff.manifest.json')
 };
 const STAGE_EXEC_PREFIX = {
   '01-task-input': 'ti',
@@ -35,7 +46,14 @@ const STAGE_EXEC_PREFIX = {
   '03-codebase-discovery': 'cd',
   '04-impact-analysis': 'ia',
   '05-plan-generation-and-review': 'pl',
-  '06-implementation': 'im'
+  '06-implementation': 'im',
+  's01-task-definition': 's01',
+  's02-code-discovery': 's02',
+  's03-implementation-plan': 's03',
+  's04-build-review': 's04',
+  's05-test-resolve': 's05',
+  's06-delivery-readiness': 's06',
+  's07-handoff': 's07'
 };
 const DEFAULT_STAGE_ID = '02-requirement-analysis';
 const LAST_WORKSPACE_PATH = path.join(PLUGIN_ROOT, 'runtime', 'last-workspace.json');
@@ -49,7 +67,25 @@ const STAGE_CHAT_ORDER = [
   '03-codebase-discovery',
   '04-impact-analysis',
   '05-plan-generation-and-review',
-  '06-implementation'
+  '06-implementation',
+  '07-implementation-tracking',
+  '08-implementation-code-review',
+  '09-test-discovery',
+  '10-test-generation-and-review',
+  '11-test-execution',
+  '12-debugging-iteration',
+  '13-security-regression-review',
+  '14-final-code-review',
+  '15-final-summary-ai-reflection'
+];
+const SEVEN_STAGE_CHAT_ORDER = [
+  's01-task-definition',
+  's02-code-discovery',
+  's03-implementation-plan',
+  's04-build-review',
+  's05-test-resolve',
+  's06-delivery-readiness',
+  's07-handoff'
 ];
 const STAGE_ROLE_SKILL = {
   '01-task-input': 'savyre-task-input',
@@ -57,16 +93,99 @@ const STAGE_ROLE_SKILL = {
   '03-codebase-discovery': 'savyre-codebase-discovery',
   '04-impact-analysis': 'savyre-impact-analyst',
   '05-plan-generation-and-review': 'savyre-plan-generation-and-review',
-  '06-implementation': 'savyre-implementation'
+  '06-implementation': 'savyre-implementation',
+  '07-implementation-tracking': 'savyre-run-stage',
+  '08-implementation-code-review': 'savyre-run-stage',
+  '09-test-discovery': 'savyre-run-stage',
+  '10-test-generation-and-review': 'savyre-run-stage',
+  '11-test-execution': 'savyre-run-stage',
+  '12-debugging-iteration': 'savyre-run-stage',
+  '13-security-regression-review': 'savyre-run-stage',
+  '14-final-code-review': 'savyre-run-stage',
+  '15-final-summary-ai-reflection': 'savyre-run-stage',
+  's01-task-definition': 'savyre-stage-task-definition',
+  's02-code-discovery': 'savyre-stage-code-discovery',
+  's03-implementation-plan': 'savyre-stage-implementation-plan',
+  's04-build-review': 'savyre-stage-build-review',
+  's05-test-resolve': 'savyre-stage-test-resolve',
+  's06-delivery-readiness': 'savyre-stage-delivery-readiness',
+  's07-handoff': 'savyre-stage-handoff'
 };
+
+function isSevenStageId(stageId) {
+  return /^s0[1-7]-/.test(String(stageId || ''));
+}
+
+function isTaskCaptureStage(stageId) {
+  return stageId === '01-task-input' || stageId === 's01-task-definition';
+}
+
+function sevenStageFolder(stageId) {
+  return String(stageId || '').replace(/-/g, '_');
+}
+
+function stageDraftRel(stageId) {
+  const map = {
+    's01-task-definition': 'stages/s01_task_definition/task_brief.md',
+    's02-code-discovery': 'stages/s02_code_discovery/codebase_impact_report.md',
+    's03-implementation-plan': 'stages/s03_implementation_plan/implementation_plan.md',
+    's05-test-resolve': 'stages/s05_test_resolve/verification_report.md',
+    's06-delivery-readiness': 'stages/s06_delivery_readiness/delivery_readiness_report.md',
+    's07-handoff': 'stages/s07_handoff/delivery_summary.md'
+  };
+  if (map[stageId]) return map[stageId];
+  if (isSevenStageId(stageId)) return `stages/${sevenStageFolder(stageId)}/ai-output.md`;
+  return `savyre/stages/${stageId}/ai-output.md`;
+}
+
+function stageInputRel(stageId) {
+  if (stageId === 's01-task-definition') return 'stages/s01_task_definition/stage_input.json';
+  return `savyre/stages/${stageId}/input.md`;
+}
+
+function stageReviewRel(stageId) {
+  if (isSevenStageId(stageId)) return `stages/${sevenStageFolder(stageId)}/developer-review.md`;
+  return `savyre/stages/${stageId}/developer-review.md`;
+}
+
+function stageFinalRel(stageId) {
+  if (isSevenStageId(stageId)) return `stages/${sevenStageFolder(stageId)}/final.md`;
+  return `savyre/stages/${stageId}/final.md`;
+}
+
+function chatOrderFor(stageId) {
+  return isSevenStageId(stageId) ? SEVEN_STAGE_CHAT_ORDER : STAGE_CHAT_ORDER;
+}
 const REGISTRY_TO_CURSOR_SKILL = {
   'savyre.task-input-dialogue': 'savyre-task-input',
   'savyre.requirement-analysis': 'savyre-requirement-analyst',
   'savyre.requirement-challenge': 'savyre-requirement-challenge',
   'savyre.codebase-discovery': 'savyre-codebase-discovery',
   'savyre.evidence-grounding': 'savyre-evidence-grounding',
-  'savyre.verification-before-completion': 'savyre-verification-before-completion'
+  'savyre.verification-before-completion': 'savyre-verification-before-completion',
+  'savyre.impact-analyst': 'savyre-impact-analyst',
+  'savyre.plan-generation-and-review': 'savyre-plan-generation-and-review',
+  'savyre.implementation': 'savyre-implementation'
 };
+
+function isPanelRunStage(stageId) {
+  if (typeof brain?.isPanelRunStage === 'function') {
+    return brain.isPanelRunStage(stageId);
+  }
+  const id = String(stageId || '').trim();
+  if (isSevenStageId(id)) {
+    return false;
+  }
+  return (
+    STAGE_CHAT_ORDER.includes(id) &&
+    id !== '01-task-input' &&
+    id !== '02-requirement-analysis' &&
+    id !== '03-codebase-discovery' &&
+    id !== '04-impact-analysis' &&
+    id !== '05-plan-generation-and-review' &&
+    id !== '06-implementation'
+  );
+}
 
 /** Loaded from @savyre/run-config. Null means Chat cannot serve canned copy. */
 let brain = null;
@@ -142,6 +261,8 @@ const WRITE_STAGES = new Set([
   '01-task-input',
   '02-requirement-analysis',
   '03-codebase-discovery',
+  '04-impact-analysis',
+  '05-plan-generation-and-review',
   '06-implementation'
 ]);
 
@@ -779,6 +900,17 @@ function buildStage01IntakeReview(input) {
 }
 
 function extractAssignedTaskPlain(inputText) {
+  const raw = String(inputText || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('{')) {
+    try {
+      const doc = JSON.parse(raw);
+      const task = typeof doc?.assignedTask === 'string' ? doc.assignedTask.trim() : '';
+      if (task) return task;
+    } catch {
+      /* not JSON */
+    }
+  }
   return productWordingFromStage01Input(inputText);
 }
 
@@ -795,20 +927,111 @@ function upsertAssignedTaskInInput(content, taskText) {
 }
 
 async function persistAssignedTaskExact(workspace, taskText) {
-  const abs = path.join(workspace, 'savyre', 'stages', '01-task-input', 'input.md');
+  const task = String(taskText || '').trim();
+  if (!task) return;
+  const sevenAbs = path.join(workspace, 'stages', 's01_task_definition', 'stage_input.json');
+  const legacyAbs = path.join(workspace, 'savyre', 'stages', '01-task-input', 'input.md');
+  try {
+    await fs.access(sevenAbs);
+    let doc = { schemaVersion: '1.0.0', assignedTask: '' };
+    try {
+      doc = JSON.parse(await fs.readFile(sevenAbs, 'utf8'));
+    } catch {
+      /* use default */
+    }
+    doc.assignedTask = task;
+    await fs.mkdir(path.dirname(sevenAbs), { recursive: true });
+    await fs.writeFile(sevenAbs, `${JSON.stringify(doc, null, 2)}\n`, 'utf8');
+    return;
+  } catch {
+    /* fall through to legacy */
+  }
   let current = '';
   try {
-    current = await fs.readFile(abs, 'utf8');
+    current = await fs.readFile(legacyAbs, 'utf8');
   } catch {
     current = '';
   }
-  const next = upsertAssignedTaskInInput(current, taskText);
-  await fs.mkdir(path.dirname(abs), { recursive: true });
-  await fs.writeFile(abs, next.endsWith('\n') ? next : `${next}\n`, 'utf8');
+  const next = upsertAssignedTaskInInput(current, task);
+  await fs.mkdir(path.dirname(legacyAbs), { recursive: true });
+  await fs.writeFile(legacyAbs, next.endsWith('\n') ? next : `${next}\n`, 'utf8');
 }
 
 function withUserMessage(payload, userMessage) {
   return { ...payload, userMessage };
+}
+
+const SKILL_PIN_REL = path.join('.savyre', 'skill-delivery-pin.json');
+
+async function readPinnedSkillHashes(workspace) {
+  try {
+    const raw = JSON.parse(await fs.readFile(path.join(workspace, SKILL_PIN_REL), 'utf8'));
+    return raw.hashes && typeof raw.hashes === 'object' ? raw.hashes : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writePinnedSkillHashes(workspace, record) {
+  const hashes = {};
+  for (const skill of record?.skills || []) {
+    if (skill.contentHash) hashes[skill.name] = skill.contentHash;
+  }
+  await fs.mkdir(path.join(workspace, '.savyre'), { recursive: true });
+  await fs.writeFile(
+    path.join(workspace, SKILL_PIN_REL),
+    `${JSON.stringify({ hashes, at: new Date().toISOString() }, null, 2)}\n`,
+    'utf8'
+  );
+}
+
+async function readWorkflowIdentities(workspace) {
+  const cfg = await readJsonIfPresent(path.join(workspace, '.savyre', 'config.json'));
+  const workflowVersion = cfg?.workflow?.workflowVersion || 'savyre-ai-workflow-v1';
+  const live = brain?.liveCompatibilityIdentities?.() || {
+    workflowVersion: 'savyre-ai-workflow-v1',
+    layoutVersion: 'shared-v1',
+    artifactSchemaVersion: '1.0.0',
+    bundleRef: 'live-fifteen-stage',
+    runtimeId: 'savyre-run-config'
+  };
+  const target = brain?.targetCompatibilityIdentities?.() || {
+    workflowVersion: 'savyre-ai-workflow-v2-seven-stage',
+    layoutVersion: 'session-v1',
+    artifactSchemaVersion: '1.0.0',
+    bundleRef: 'bundle_candidate_1',
+    runtimeId: 'savyre-run-config'
+  };
+  const installed = brain?.installedCompatibilityIdentities?.(PLUGIN_ROOT) || live;
+  if (workflowVersion === 'savyre-ai-workflow-v2-seven-stage') {
+    return { session: target, installed };
+  }
+  return { session: live, installed };
+}
+
+function buildGuardSkillDelivery(stageId, state, ctx, payloads, pinnedHashes, identities) {
+  if (!brain?.resolveWorkflowSkillDelivery) {
+    if (!brain?.deliverFifteenStagePluginSkills) return null;
+    return brain.deliverFifteenStagePluginSkills({
+      pluginRoot: PLUGIN_ROOT,
+      stageId,
+      state,
+      ctx,
+      payloads,
+      pinnedHashes
+    }).record;
+  }
+  return brain.resolveWorkflowSkillDelivery({
+    installRoot: PLUGIN_ROOT,
+    session: identities.session,
+    installed: identities.installed,
+    legacyStageId: stageId,
+    workflowFamily: 'fifteen-stage',
+    state,
+    ctx,
+    payloads,
+    pinnedHashes
+  }).record;
 }
 
 const WRITE_TOOLS = new Set([
@@ -886,6 +1109,94 @@ function resolveSavyreCliJs() {
     if (c && existsSync(c)) return c;
   }
   return null;
+}
+
+function probeSavyreCliChatAction(cliJs) {
+  if (!cliJs) return 'missing_cli';
+  try {
+    const result = spawnSync(
+      process.execPath,
+      [cliJs, 'workflow', 'chat-action', 'turn', '--json'],
+      { cwd: os.tmpdir(), encoding: 'utf8', timeout: 15000 }
+    );
+    const text = `${result.stdout || ''}\n${result.stderr || ''}`;
+    if (/Unknown workflow command:\s*chat-action/i.test(text)) return 'missing_command';
+    if (/authentication required|AUTH_REQUIRED|sign in to Savyre/i.test(text)) return 'auth_required';
+    if (parseCliJson(result.stdout) || parseCliJson(result.stderr)) return 'registered';
+    if (result.status === 0) return 'registered';
+    return 'unavailable';
+  } catch {
+    return 'unavailable';
+  }
+}
+
+function describeCliChatActionCapability() {
+  const cliJs = resolveSavyreCliJs();
+  const probe = probeSavyreCliChatAction(cliJs);
+  if (!cliJs) {
+    return {
+      id: 'workflow.chat-action',
+      available: false,
+      reason:
+        'Savyre CLI not found. Set SAVYRE_CLI to cli/dist/savyre.js, or keep the extension repo next to this plugin.'
+    };
+  }
+  if (probe === 'missing_command') {
+    return {
+      id: 'workflow.chat-action',
+      available: false,
+      cli: cliJs,
+      reason: 'CLI is present but workflow chat-action is not registered.'
+    };
+  }
+  if (probe === 'auth_required') {
+    return {
+      id: 'workflow.chat-action',
+      available: true,
+      cli: cliJs,
+      reason: 'CLI registered; authentication required before turn execution.'
+    };
+  }
+  if (probe === 'unavailable') {
+    return {
+      id: 'workflow.chat-action',
+      available: false,
+      cli: cliJs,
+      reason: 'CLI chat-action probe failed.'
+    };
+  }
+  return { id: 'workflow.chat-action', available: true, cli: cliJs };
+}
+
+function buildRuntimeCapabilities() {
+  const runtime = getSavyreRuntimeReport();
+  const cli = describeCliChatActionCapability();
+  return {
+    brain: runtime?.ok
+      ? {
+          available: true,
+          indexPath: runtime.selected?.indexPath || null,
+          runConfigVersion: runtime.selected?.runConfigVersion || runtime.runConfigVersion || null,
+          capabilityVersion: runtime.capabilityVersion || '1.0.0'
+        }
+      : {
+          available: false,
+          reason: 'No compatible @savyre/run-config package found for the plugin runtime contract.',
+          candidates: runtime?.candidates || []
+        },
+    cli
+  };
+}
+
+function brainMissingRecoveryMessage() {
+  const runtime = getSavyreRuntimeReport();
+  const incompatible = runtime?.candidates?.filter((c) => c.status === 'incompatible') || [];
+  if (incompatible.length) {
+    const first = incompatible[0];
+    const missing = first.missing?.length ? ` Missing: ${first.missing.join(', ')}.` : '';
+    return `${BRAIN_MISSING_USER_MESSAGE} Found incompatible run-config at ${first.indexPath}.${missing} Use the Savyre panel or install a matching @savyre/run-config build.`;
+  }
+  return `${BRAIN_MISSING_USER_MESSAGE} Install @savyre/run-config from the Savyre extension or set SAVYRE_RUN_CONFIG_PATH.`;
 }
 
 function parseCliJson(stdout) {
@@ -1041,8 +1352,14 @@ function withUnifiedTurn(payload, workspace) {
   const keepIntakeTalk =
     typeof payload.userMessage === 'string' &&
     (/to confirm/.test(payload.userMessage) ||
-      /to lock Task Input/.test(payload.userMessage) ||
-      payload.userMessage === stage01DraftAction());
+      /to lock /.test(payload.userMessage) ||
+      /Please check `/.test(payload.userMessage) ||
+      /I've written `/.test(payload.userMessage) ||
+      /I've saved that under `/.test(payload.userMessage) ||
+      payload.userMessage === stage01DraftAction() ||
+      (brain &&
+        typeof brain.stage01DraftAction === 'function' &&
+        payload.userMessage === brain.stage01DraftAction('s01-task-definition')));
   if (keepIntakeTalk) {
     next.composer = {
       userMessage: payload.userMessage,
@@ -1494,17 +1811,17 @@ async function readStageFile(workspace, rel) {
 }
 
 function previousChatStageId(stageId) {
-  const i = STAGE_CHAT_ORDER.indexOf(stageId);
-  return i > 0 ? STAGE_CHAT_ORDER[i - 1] : null;
+  const i = chatOrderFor(stageId).indexOf(stageId);
+  return i > 0 ? chatOrderFor(stageId)[i - 1] : null;
 }
 
-/** Stage 01 uses input.md. Stages 02–06 use the previous stage's final.md. */
+/** Stage 01 uses input capture. Later stages use the previous stage's final.md. */
 async function readChatSource(workspace, stageId) {
-  if (stageId === '01-task-input') {
+  if (isTaskCaptureStage(stageId)) {
     return {
       kind: 'input',
       previousStageId: null,
-      file: await readStageFile(workspace, 'savyre/stages/01-task-input/input.md')
+      file: await readStageFile(workspace, stageInputRel(stageId))
     };
   }
   const prev = previousChatStageId(stageId);
@@ -1512,22 +1829,25 @@ async function readChatSource(workspace, stageId) {
     return {
       kind: 'input',
       previousStageId: null,
-      file: await readStageFile(workspace, `savyre/stages/${stageId}/input.md`)
+      file: await readStageFile(workspace, stageInputRel(stageId))
     };
   }
   return {
     kind: 'upstreamFinal',
     previousStageId: prev,
-    file: await readStageFile(workspace, `savyre/stages/${prev}/final.md`)
+    file: await readStageFile(
+      workspace,
+      isSevenStageId(prev) ? `stages/${sevenStageFolder(prev)}/final.md` : `savyre/stages/${prev}/final.md`
+    )
   };
 }
 
 async function readStageInput(workspace, stageId) {
-  return readStageFile(workspace, `savyre/stages/${stageId}/input.md`);
+  return readStageFile(workspace, stageInputRel(stageId));
 }
 
 async function aiOutputLooksWritten(workspace, stageId) {
-  const abs = path.join(workspace, 'savyre', 'stages', stageId, 'ai-output.md');
+  const abs = path.join(workspace, ...stageDraftRel(stageId).split('/'));
   try {
     const raw = await fs.readFile(abs, 'utf8');
     return raw.trim().length >= 200;
@@ -1537,7 +1857,7 @@ async function aiOutputLooksWritten(workspace, stageId) {
 }
 
 async function healOpenQuestionsNoneFile(workspace, stageId) {
-  const abs = path.join(workspace, 'savyre', 'stages', stageId, 'ai-output.md');
+  const abs = path.join(workspace, ...stageDraftRel(stageId).split('/'));
   try {
     const text = await fs.readFile(abs, 'utf8');
     const match = text.match(
@@ -1617,28 +1937,96 @@ function parseEvidenceMap(raw) {
 }
 
 async function loadChatPass(workspace, stageId) {
-  const challengeRaw = await readJsonIfPresent(
-    path.join(workspace, 'savyre', 'stages', '02-requirement-analysis', 'challenge-findings.json')
-  );
-  const evidenceRaw = await readJsonIfPresent(
-    path.join(workspace, 'savyre', 'stages', '03-codebase-discovery', 'evidence-map.json')
-  );
-  const challengeComplete =
-    stageId !== '02-requirement-analysis' || parseChallengeFindings(challengeRaw).ok;
-  const evidenceReady = stageId !== '03-codebase-discovery' || parseEvidenceMap(evidenceRaw).ok;
+  const challengeRels =
+    typeof brain?.challengeFindingsCandidateRels === 'function'
+      ? brain.challengeFindingsCandidateRels(stageId)
+      : [
+          'stages/s01_task_definition/challenge_findings.json',
+          'stages/s01_task_definition/challenge-findings.json',
+          'savyre/stages/02-requirement-analysis/challenge-findings.json'
+        ];
+  const evidenceRels =
+    typeof brain?.evidenceMapCandidateRels === 'function'
+      ? brain.evidenceMapCandidateRels(stageId)
+      : [
+          'stages/s02_code_discovery/discovery_evidence.json',
+          'stages/s02_code_discovery/evidence-map.json',
+          'savyre/stages/03-codebase-discovery/evidence-map.json'
+        ];
+  let challengeRaw = null;
+  for (const rel of challengeRels) {
+    challengeRaw = await readJsonIfPresent(path.join(workspace, ...rel.split('/')));
+    if (challengeRaw) break;
+  }
+  let evidenceRaw = null;
+  for (const rel of evidenceRels) {
+    evidenceRaw = await readJsonIfPresent(path.join(workspace, ...rel.split('/')));
+    if (evidenceRaw) break;
+  }
+  const isChallengeStage =
+    stageId === '02-requirement-analysis' || stageId === 's01-task-definition';
+  const isEvidenceStage =
+    stageId === '03-codebase-discovery' || stageId === 's02-code-discovery';
+  const challengeComplete = !isChallengeStage || parseChallengeFindings(challengeRaw).ok;
+  const evidenceReady = !isEvidenceStage || parseEvidenceMap(evidenceRaw).ok;
   return { challengeComplete, evidenceReady };
 }
 
 function chatGenerateFinalBlockers({ stageId, aiReady, hasPendingBlocking, challengeComplete, evidenceReady }) {
+  if (typeof brain?.chatGenerateFinalBlockers === 'function') {
+    return brain.chatGenerateFinalBlockers({
+      stageId,
+      aiReady,
+      hasPendingBlocking,
+      challengeOk: challengeComplete,
+      evidenceOk: evidenceReady
+    });
+  }
   if (!aiReady) return { ok: false, kind: 'draft_now' };
   if (hasPendingBlocking) return { ok: false, kind: 'need_answers' };
-  if (stageId === '02-requirement-analysis' && challengeComplete !== true) {
+  if (
+    (stageId === '02-requirement-analysis' || stageId === 's01-task-definition') &&
+    challengeComplete !== true
+  ) {
     return { ok: false, kind: 'need_challenge' };
   }
-  if (stageId === '03-codebase-discovery' && evidenceReady !== true) {
+  if (
+    (stageId === '03-codebase-discovery' || stageId === 's02-code-discovery') &&
+    evidenceReady !== true
+  ) {
     return { ok: false, kind: 'need_evidence' };
   }
   return { ok: true, kind: 'ask_generate_final' };
+}
+
+function evaluateVerification(input) {
+  if (typeof brain?.evaluateVerification === 'function') {
+    return brain.evaluateVerification({
+      stageId: input.stageId,
+      aiReady: input.aiReady,
+      hasPendingBlocking: input.hasPendingBlocking,
+      challengeOk: input.challengeComplete,
+      evidenceOk: input.evidenceReady
+    });
+  }
+  const gate = chatGenerateFinalBlockers(input);
+  const stageChallenge =
+    input.stageId === '02-requirement-analysis' || input.stageId === 's01-task-definition';
+  const stageEvidence =
+    input.stageId === '03-codebase-discovery' || input.stageId === 's02-code-discovery';
+  return {
+    schemaVersion: '1.0',
+    ready: gate.ok,
+    kind: gate.kind,
+    checks: {
+      draftReady: Boolean(input.aiReady),
+      openQuestionsResolved: !input.hasPendingBlocking,
+      challengeOk: stageChallenge ? input.challengeComplete === true : null,
+      evidenceOk: stageEvidence ? input.evidenceReady === true : null
+    },
+    canApprove: false,
+    canUnlockStage: false
+  };
 }
 
 function isVerificationBeforeCompletionEnabled() {
@@ -1647,25 +2035,6 @@ function isVerificationBeforeCompletionEnabled() {
 
 function isChatContinuationEnabled() {
   return process.env.SAVYRE_CHAT_CONTINUATION !== '0';
-}
-
-function evaluateVerification(input) {
-  const gate = chatGenerateFinalBlockers(input);
-  const stage02 = input.stageId === '02-requirement-analysis';
-  const stage03 = input.stageId === '03-codebase-discovery';
-  return {
-    schemaVersion: '1.0',
-    ready: gate.ok,
-    kind: gate.kind,
-    checks: {
-      draftReady: Boolean(input.aiReady),
-      openQuestionsResolved: !input.hasPendingBlocking,
-      challengeOk: stage02 ? input.challengeComplete === true : null,
-      evidenceOk: stage03 ? input.evidenceReady === true : null
-    },
-    canApprove: false,
-    canUnlockStage: false
-  };
 }
 
 function applyVerificationAllowedActions(actions, verification) {
@@ -1677,16 +2046,22 @@ function applyVerificationAllowedActions(actions, verification) {
 
 function buildChatContinuation(checkpoint) {
   if (!isChatContinuationEnabled() || !checkpoint) return null;
+  if (typeof brain?.buildChatContinuation === 'function') {
+    return brain.buildChatContinuation(checkpoint);
+  }
   return {
     schemaVersion: '1.0',
     sessionId: checkpoint.sessionId || null,
     stageId: checkpoint.stageId || null,
+    sessionRevision: typeof checkpoint.sessionRevision === 'number' ? checkpoint.sessionRevision : 0,
     pendingQuestionId: checkpoint.pendingQuestionId || null,
     activeSkill: checkpoint.activeSkill || null,
     originalTaskHash: checkpoint.originalTaskHash || null,
     originalTaskRevision:
       typeof checkpoint.originalTaskRevision === 'number' ? checkpoint.originalTaskRevision : null,
-    artifactRevision: checkpoint.artifactRevision || 0
+    artifactRevision: checkpoint.artifactRevision || 0,
+    workflowVersion: checkpoint.workflowVersion || null,
+    bundleRef: checkpoint.bundleRef || null
   };
 }
 
@@ -1708,17 +2083,55 @@ const CHAT_ARTIFACT_HEADINGS = {
 # Application Repository Index
 # Observed Findings
 # Not Identified
+## Open Questions`,
+  '04-impact-analysis': `# Impact Analysis
+# Affected Files and Components
+# Blast Radius
+# Risks and Dependencies
+# Test and Verification Impact
+## Open Questions`,
+  '05-plan-generation-and-review': `# Implementation Plan
+# Approach
+# Steps
+# Plan Risks
+## Open Questions`,
+  's01-task-definition': `# Task Brief
+# Explicit Requirements
+# Potential Assumptions
+# Acceptance Criteria
+# Constraints
+## Open Questions`,
+  's02-code-discovery': `# Code Discovery
+# Observed Findings
+# Not Identified
+## Open Questions`,
+  's03-implementation-plan': `# Implementation Plan
+# Approach
+# Steps
+# Plan Risks
+## Open Questions`,
+  's05-test-resolve': `# Verification Report
+# Results
+# Remaining Issues
+## Open Questions`,
+  's06-delivery-readiness': `# Delivery Readiness
+# Checklist
+# Risks
+## Open Questions`,
+  's07-handoff': `# Delivery Summary
+# Handoff Notes
 ## Open Questions`
 };
 
 function chatWriteAiOutputMessage(stageId) {
   const headings = CHAT_ARTIFACT_HEADINGS[stageId] || '## Open Questions';
+  const draftRel = stageDraftRel(stageId);
   const src =
-    stageId === '01-task-input'
-      ? 'Fill every section from the confirmed Assigned task only. Restate their product; do not copy 15-stage process text.'
+    isTaskCaptureStage(stageId)
+      ? 'Fill every section from the confirmed Assigned task only. Restate their product; do not copy process text.'
       : 'Fill from the previous stage final.md. Do not copy prompt instructions.';
   return [
-    `Write \`savyre/stages/${stageId}/ai-output.md\` now so Generate final will not fail.`,
+    `Write \`${draftRel}\` now so Generate final will not fail.`,
     src,
     'Use these headings (a complete stage document, at least 200 characters, include ## Open Questions):',
     headings,
@@ -1742,12 +2155,26 @@ async function chatStageFollowupMessage(workspace, stageId, next) {
     challengeComplete: pass.challengeComplete,
     evidenceReady: pass.evidenceReady
   });
-  if (!aiReady) return chatWriteAiOutputMessage(stageId);
-  if (stageId === '02-requirement-analysis' && !pass.challengeComplete) {
-    return 'Draft exists. Run the requirement-challenge pass as a separate step. Write challenge-findings.json. Put blocking gaps in Open Questions. Do not rewrite the draft unless validation asked. Do not generate-final yet.';
+  if (!aiReady) {
+    if (isPanelRunStage(stageId)) {
+      return chatUserMessage('panel_run_ai', { stageId });
+    }
+    if (stageId === '06-implementation' || stageId === 's04-build-review') {
+      return chatUserMessage('implement');
+    }
+    return chatWriteAiOutputMessage(stageId);
   }
-  if (stageId === '03-codebase-discovery' && !pass.evidenceReady) {
-    return 'Draft exists. Run evidence-grounding. Write evidence-map.json for observed findings only. Greenfield: greenfield true and empty or not-found items. Do not invent architecture. Do not generate-final yet.';
+  if (
+    (stageId === '02-requirement-analysis' || stageId === 's01-task-definition') &&
+    !pass.challengeComplete
+  ) {
+    return 'Draft exists. Run the requirement-challenge pass as a separate step. Write challenge findings JSON (stages/s01_task_definition/challenge_findings.json or savyre/stages/02-requirement-analysis/challenge-findings.json). Put blocking gaps in Open Questions. Do not rewrite the draft unless validation asked. Do not generate-final yet.';
+  }
+  if (
+    (stageId === '03-codebase-discovery' || stageId === 's02-code-discovery') &&
+    !pass.evidenceReady
+  ) {
+    return 'Draft exists. Run evidence-grounding. Write discovery evidence / evidence-map JSON for observed findings only (stages/s02_code_discovery/discovery_evidence.json or savyre/stages/03-codebase-discovery/evidence-map.json). Greenfield: greenfield true and empty or not-found items. Do not invent architecture. Do not generate-final yet.';
   }
   if (!gate.ok) {
     return 'Follow turn.activeSkill. Do not run generate-final until that pass is done.';
@@ -1756,31 +2183,36 @@ async function chatStageFollowupMessage(workspace, stageId, next) {
 }
 
 function assignedTaskLooksFilled(inputText) {
-  return Boolean(productWordingFromStage01Input(inputText));
+  return Boolean(extractAssignedTaskPlain(inputText));
 }
 
 async function stage01SpokenFromDisk(workspace, opts = {}) {
-  const inputFile = await readStageInput(workspace, '01-task-input');
+  const stageId = opts.stageId || '01-task-input';
+  const inputFile = await readStageInput(workspace, stageId);
   const assigned = extractAssignedTaskPlain(inputFile.text);
   if (!assigned) return null;
   const confirmed = Boolean(opts.confirmed);
   const draftReady = Boolean(opts.draftReady);
   const locked = Boolean(opts.locked);
   const userMessage = locked
-    ? chatUserMessage('ask_validate', { stageId: '01-task-input' })
-    : buildStage01IntakeReview({
-        originalTask: assigned,
-        pendingQuestion: opts.pendingQuestion || null,
-        confirmed,
-        draftReady
-      });
+    ? chatUserMessage('ask_validate', { stageId })
+    : draftReady && confirmed
+      ? chatUserMessage('ask_generate_final', { stageId })
+      : confirmed
+        ? chatUserMessage('draft_now', { stageId })
+        : buildStage01IntakeReview({
+            originalTask: assigned,
+            pendingQuestion: opts.pendingQuestion || null,
+            confirmed,
+            draftReady
+          });
   const report = '';
   const lead = '';
   return { assigned, userMessage, report, lead };
 }
 
 async function stageChatWorkLooksDone(workspace, stageId) {
-  if (stageId === '01-task-input') {
+  if (isTaskCaptureStage(stageId)) {
     const inputFile = await readStageInput(workspace, stageId);
     return assignedTaskLooksFilled(inputFile.text);
   }
@@ -1808,31 +2240,73 @@ async function writeChatInjectState(workspace, state) {
 function buildSessionContext(manifest, source) {
   const role = STAGE_ROLE_SKILL[manifest.stageId] || 'the matching Savyre role skill';
   const inputFile = source.file;
-  if (manifest.stageId === '01-task-input') {
+  const draftRel = stageDraftRel(manifest.stageId);
+  const prev = source.previousStageId;
+  const prevFinalRel = prev
+    ? isSevenStageId(prev)
+      ? `stages/${sevenStageFolder(prev)}/final.md`
+      : `savyre/stages/${prev}/final.md`
+    : null;
+
+  if (isTaskCaptureStage(manifest.stageId)) {
     const filled = assignedTaskLooksFilled(inputFile.text);
+    const captureRel = stageInputRel(manifest.stageId);
+    const seven = manifest.stageId === 's01-task-definition';
     return [
-      'Savyre stage `01-task-input` is enforced (read_write, input.md and ai-output.md).',
+      `Savyre stage \`${manifest.stageId}\` is enforced (read_write, ${seven ? 'stage_input.json and task_brief.md' : 'input.md and ai-output.md'}).`,
       `Use the Cursor skill \`${role}\`. Follow JSON \`turn.activeSkill\` when present. Do not invent Savyre methodology.`,
       filled
-        ? 'Leftover or a one-liner under Assigned task is a scratch capture, not the final Assigned task. Replace `## Assigned task` with 2-4 short sentences plus a Product / UX / API / Data / Stack list from that prompt. Keep Official assignment unchanged. Speak that same Assigned task text, then speak userMessage. Wait for /savyre-next. After they continue, write ai-output.md from that Assigned task. Do not run panel Stage AI. Do not lock until ai-output.md exists.'
-        : 'FIRST MESSAGE: ask only what they want to build — unless JSON suggestedTask or intakeReview is already set, then replace Assigned task with the restatement, speak it, and wait for /savyre-next. Official assignment / 15-stage text is Savyre process, not the product. After they name a product, write the 2-4 sentences plus Product / UX / API / Data / Stack list under `## Assigned task`. Wait for /savyre-next. Do not confirm for them.',
-      'Before confirm you may write only `input.md`. After confirm you may write `ai-output.md`. Cursor Agent cannot record ACCEPTED — that stays in the Savyre extension.'
+        ? seven
+          ? `Assigned task is captured in \`${captureRel}\`. Speak that restatement, then speak userMessage. Wait for /savyre-next to confirm. After confirm, write \`${draftRel}\`. Do not run panel Stage AI. Do not lock until the draft exists.`
+          : 'Leftover or a one-liner under Assigned task is a scratch capture, not the final Assigned task. Replace `## Assigned task` with 2-4 short sentences plus a Product / UX / API / Data / Stack list from that prompt. Keep Official assignment unchanged. Speak that same Assigned task text, then speak userMessage. Wait for /savyre-next. After they continue, write ai-output.md from that Assigned task. Do not run panel Stage AI. Do not lock until ai-output.md exists.'
+        : seven
+          ? `FIRST MESSAGE: ask only what they want to build — unless JSON suggestedTask or intakeReview is already set. Write the restatement into \`${captureRel}\` field assignedTask (2-4 sentences plus Product / UX / API / Data / Stack). Speak that text, then speak userMessage. Wait for /savyre-next. Do not confirm for them.`
+          : 'FIRST MESSAGE: ask only what they want to build — unless JSON suggestedTask or intakeReview is already set, then replace Assigned task with the restatement, speak it, and wait for /savyre-next. Official assignment / 15-stage text is Savyre process, not the product. After they name a product, write the 2-4 sentences plus Product / UX / API / Data / Stack list under `## Assigned task`. Wait for /savyre-next. Do not confirm for them.',
+      seven
+        ? `Before confirm you may write only \`${captureRel}\`. After confirm you may write \`${draftRel}\`. Cursor Agent cannot record ACCEPTED — that stays in the Savyre extension.`
+        : 'Before confirm you may write only `input.md`. After confirm you may write `ai-output.md`. Cursor Agent cannot record ACCEPTED — that stays in the Savyre extension.'
     ].join('\n');
   }
-  const writeHint =
-    manifest.stageId === '06-implementation'
-      ? 'You may write application files with Write/StrReplace. Do not run Shell, start subagents, or delete files.'
-      : manifest.stageId === '02-requirement-analysis' || manifest.stageId === '03-codebase-discovery'
-        ? `Write \`savyre/stages/${manifest.stageId}/ai-output.md\` using the required headings. Source of truth is the previous final.md. Put Open Questions in that file and ask them here. Do not write answers. Do not edit developer-review.md.${
-            manifest.stageId === '03-codebase-discovery'
-              ? ' Also write evidence-map.json for observed findings only. Do not invent architecture on a greenfield repo.'
-              : ' Do not add Confirmed Requirements or Functional Requirement Analysis — Savyre injects the Stage 01 contract.'
-          } If Generate final rejects the artifact, fix ai-output.md. Speak userMessage. Wait for /savyre-next. Do not run it yourself.`
-        : 'Read-only: do not edit application source. Do not write ai-output.md. Use the Savyre panel to run this stage. Then speak userMessage and wait for /savyre-next. Do not run it or validate yourself.';
-  const prev = source.previousStageId;
+
+  const isImplement =
+    manifest.stageId === '06-implementation' || manifest.stageId === 's04-build-review';
+  const isChatDraft =
+    typeof brain?.isChatWriteStage === 'function'
+      ? brain.isChatWriteStage(manifest.stageId)
+      : [
+          '02-requirement-analysis',
+          '03-codebase-discovery',
+          '04-impact-analysis',
+          '05-plan-generation-and-review',
+          's02-code-discovery',
+          's03-implementation-plan',
+          's05-test-resolve',
+          's06-delivery-readiness',
+          's07-handoff'
+        ].includes(manifest.stageId);
+
+  let writeHint;
+  if (isImplement) {
+    writeHint =
+      'You may write application files with Write/StrReplace. Do not run Shell, start subagents, or delete files. When done, speak userMessage and wait for /savyre-next.';
+  } else if (isChatDraft) {
+    const evidenceHint =
+      manifest.stageId === '03-codebase-discovery' || manifest.stageId === 's02-code-discovery'
+        ? ` Also write evidence under \`${isSevenStageId(manifest.stageId) ? 'stages/s02_code_discovery/discovery_evidence.json' : 'savyre/stages/03-codebase-discovery/evidence-map.json'}\` for observed findings only. Do not invent architecture on a greenfield repo.`
+        : '';
+    const challengeHint =
+      manifest.stageId === '02-requirement-analysis'
+        ? ' Do not add Confirmed Requirements or Functional Requirement Analysis — Savyre injects the Stage 01 contract.'
+        : '';
+    writeHint = `Write \`${draftRel}\` using the required headings. Source of truth is the previous final.md${prevFinalRel ? ` (\`${prevFinalRel}\`)` : ''}. Put Open Questions in that file and ask them here. Do not write answers. Do not edit developer-review.md.${evidenceHint}${challengeHint} If Generate final rejects the artifact, fix \`${draftRel}\`. Speak userMessage. Wait for /savyre-next. Do not run it yourself.`;
+  } else {
+    writeHint =
+      'Read-only: do not edit application source. Do not invent drafts. Use the Savyre panel if this stage is panel-run. Then speak userMessage and wait for /savyre-next.';
+  }
+
   const missingHint =
     source.kind === 'upstreamFinal'
-      ? `This stage has no input.md — that is expected. Source of truth is the previous approved \`final.md\`${prev ? ` (\`savyre/stages/${prev}/final.md\`)` : ''}.`
+      ? `This stage has no input.md — that is expected. Source of truth is the previous approved \`final.md\`${prevFinalRel ? ` (\`${prevFinalRel}\`)` : ''}.`
       : `_${inputFile.rel} is not on disk yet._`;
   const body = inputFile.missing
     ? `_${inputFile.rel} is missing. Validate the previous stage in the Savyre panel first. Do not invent requirements._`
@@ -1843,8 +2317,8 @@ function buildSessionContext(manifest, source) {
     `Savyre stage \`${manifest.stageId}\` is enforced (${manifest.writeMode}).`,
     `Use the Cursor skill \`${role}\`. Follow JSON \`turn.activeSkill\` when present. Do not invent Savyre methodology.`,
     missingHint,
-    manifest.stageId === '02-requirement-analysis' || manifest.stageId === '03-codebase-discovery'
-      ? 'Work in this chat. Write ai-output.md here. Cursor Agent cannot record ACCEPTED — that stays in the Savyre extension.'
+    isChatDraft
+      ? `Work in this chat. Write \`${draftRel}\` here. Cursor Agent cannot record ACCEPTED — that stays in the Savyre extension.`
       : 'Work in this chat. Cursor Agent cannot record ACCEPTED — that stays in the Savyre extension.',
     writeHint,
     '',
@@ -1883,7 +2357,10 @@ function buildStopFollowup(manifest, source) {
   const workHint =
     manifest.stageId === '06-implementation'
       ? 'Continue implementation in this chat. Write application files. Then speak userMessage and wait for /savyre-next. Do not run it yourself.'
-      : manifest.stageId === '02-requirement-analysis' || manifest.stageId === '03-codebase-discovery'
+      : manifest.stageId === '02-requirement-analysis' ||
+          manifest.stageId === '03-codebase-discovery' ||
+          manifest.stageId === '04-impact-analysis' ||
+          manifest.stageId === '05-plan-generation-and-review'
         ? `Write or fix \`savyre/stages/${manifest.stageId}/ai-output.md\` using the required headings. Ask remaining Open Questions in chat. Do not fill answers in developer-review.md. If none remain, speak userMessage and wait for /savyre-next. Do not run it yourself.`
         : 'Do not write ai-output.md. Use the Savyre panel to run this stage, then speak userMessage and wait for /savyre-next. Do not run it or validate yourself.';
   return [
@@ -2295,7 +2772,7 @@ async function cmdStart(userText) {
       {
         mode: 'idle',
         stageId,
-        reason: `Chat mode v1 supports stages 01–06 only. Current stage is ${stageId}. Accept and Validate stay in Savyre.`
+        reason: `Chat mode does not support stage ${stageId}. Start a seven-stage or stages 01–06 session in the Savyre panel.`
       },
       chatUserMessage('chat_unsupported')
     );
@@ -2318,7 +2795,7 @@ async function cmdStart(userText) {
   const sessionId = session?.sessionId || 'local';
   const existing = await readOrCreateCheckpoint(workspace, stageId, sessionId);
   const { turn, next } = await buildInteractiveTurn(workspace, stageId, sessionId, existing);
-  const captureTask = stageId === '01-task-input';
+  const captureTask = isTaskCaptureStage(stageId);
   const aiReady = await aiOutputLooksWritten(workspace, stageId);
   const pending = next && turn.state === 'needs_user_input' ? next : null;
   const pass = await loadChatPass(workspace, stageId);
@@ -2383,11 +2860,11 @@ async function cmdStart(userText) {
   } else if (captureTask && !existing?.developerConfirmed) {
     message =
       'Stage 01. Capture the assigned task if needed, then wait for /savyre-next. After they continue, write ai-output.md from the Assigned task using artifactTemplate. Do not lock yet.';
-  } else if (
+  } else   if (
     captureTask &&
     existing?.developerConfirmed &&
     aiReady &&
-    existing?.lastGenerateFinalStageId !== '01-task-input'
+    existing?.lastGenerateFinalStageId !== stageId
   ) {
     message = `Run verification-before-completion (turn.activeSkill). If the check passes, ${TALK_FROM_ASSIGNED_THEN_LOCK} Do not run lock, validate, or start the next stage yourself.`;
   } else {
@@ -2479,10 +2956,11 @@ async function cmdStart(userText) {
 
 async function cmdStatus() {
   const workspace = await findWorkspaceFromHook({ cwd: process.cwd() });
+  const capabilities = buildRuntimeCapabilities();
   const { manifest } = await loadActive(workspace);
   if (!manifest) {
     return withUserMessage(
-      { mode: 'idle', reason: 'no active manifest' },
+      { mode: 'idle', reason: 'no active manifest', runtime: capabilities },
       chatUserMessage('lock_off')
     );
   }
@@ -2504,7 +2982,8 @@ async function cmdStatus() {
         executionId: manifest.executionId,
         expiresAt: manifest.expiresAt,
         writeMode: manifest.writeMode,
-        workflowId: manifest.workflowId
+        workflowId: manifest.workflowId,
+        runtime: capabilities
       },
       chatUserMessage('on_stage', { stageId: manifest.stageId })
     ),
@@ -2530,6 +3009,20 @@ async function readOrCreateCheckpoint(workspace, stageId, sessionId) {
     const lastGf = existing?.lastGenerateFinalStageId;
     const lastGfAt = existing?.lastGenerateFinalAt;
     const prev = existing;
+    const transition =
+      typeof brain?.checkpointPatchForStageTransition === 'function'
+        ? brain.checkpointPatchForStageTransition({
+            previous: prev || null,
+            nextStageId: stageId,
+            sessionId: sessionId || 'local',
+            identities: brain.liveCompatibilityIdentities?.() || undefined
+          })
+        : {
+            pendingQuestionId: null,
+            artifactRevision: 0,
+            developerConfirmed: isTaskCaptureStage(stageId) ? prev?.developerConfirmed === true : false,
+            sessionRevision: (typeof prev?.sessionRevision === 'number' ? prev.sessionRevision : 0) + 1
+          };
     existing = {
       schemaVersion: '1.0',
       sessionId: sessionId || 'local',
@@ -2539,6 +3032,7 @@ async function readOrCreateCheckpoint(workspace, stageId, sessionId) {
       pendingQuestionId: null,
       artifactRevision: 0,
       lastValidationCodes: [],
+      ...transition,
       ...(typeof lastGf === 'string' && lastGf.trim()
         ? { lastGenerateFinalStageId: lastGf.trim(), lastGenerateFinalAt: lastGfAt }
         : {}),
@@ -2773,8 +3267,12 @@ function applyAnswerToReview(review, questionId, answer) {
 }
 
 async function readStageReview(workspace, stageId) {
-  const preferred = path.join(workspace, 'savyre', 'stages', stageId, 'developer-review.md');
-  const other = path.join(workspace, 'savyre', 'stages', stageId, 'candidate-review.md');
+  const preferredRel = stageReviewRel(stageId);
+  const preferred = path.join(workspace, ...preferredRel.split('/'));
+  const otherRel = isSevenStageId(stageId)
+    ? `stages/${sevenStageFolder(stageId)}/candidate-review.md`
+    : `savyre/stages/${stageId}/candidate-review.md`;
+  const other = path.join(workspace, ...otherRel.split('/'));
   try {
     return { abs: preferred, text: await fs.readFile(preferred, 'utf8') };
   } catch {
@@ -2791,7 +3289,7 @@ async function buildInteractiveTurn(workspace, stageId, sessionId, existing) {
   const review = await readStageReview(workspace, stageId);
   const pending = listPendingReviewQuestions(review.text);
   const next = resumePendingQuestion(pending, existing?.pendingQuestionId);
-  const keepConfirm = stageId === '01-task-input' && !existing?.developerConfirmed;
+  const keepConfirm = isTaskCaptureStage(stageId) && !existing?.developerConfirmed;
   const aiReady = await aiOutputLooksWritten(workspace, stageId);
   const validationFailed =
     Array.isArray(existing?.lastValidationCodes) && existing.lastValidationCodes.length > 0;
@@ -2840,17 +3338,18 @@ async function cmdTurn() {
   const confirmed = Boolean(existing?.developerConfirmed);
   const locked = existing?.lastGenerateFinalStageId === stageId;
   const spoken =
-    stageId === '01-task-input'
+    isTaskCaptureStage(stageId)
       ? await stage01SpokenFromDisk(workspace, {
           pendingQuestion: next?.question,
           confirmed,
           draftReady: aiReady,
-          locked
+          locked,
+          stageId
         })
       : null;
-  const awaitingConfirm = stageId === '01-task-input' && spoken && !confirmed && !next;
+  const awaitingConfirm = isTaskCaptureStage(stageId) && spoken && !confirmed && !next;
   const awaitingLock =
-    stageId === '01-task-input' && spoken && confirmed && aiReady && !locked && !next;
+    isTaskCaptureStage(stageId) && spoken && confirmed && aiReady && !locked && !next;
   const userMessage = next
     ? chatUserMessage('ask_question', { question: next.question })
     : spoken?.userMessage || chatUserMessage(gate.kind, { stageId });
@@ -2863,6 +3362,12 @@ async function cmdTurn() {
         : gate.ok
           ? `Run verification-before-completion (turn.activeSkill). If the check passes, ${waitForDeveloperSlash(lockSlash(stageId))} Do not run it, validate, or start the next stage yourself. Savyre unlocks if Validate passes.`
           : 'Follow turn.activeSkill. Do not lock until that pass is done.';
+  const pinnedHashes = await readPinnedSkillHashes(workspace);
+  const identities = await readWorkflowIdentities(workspace);
+  const skillDelivery = buildGuardSkillDelivery(stageId, turn.state, pass, {}, pinnedHashes, identities);
+  if (skillDelivery?.ok) {
+    await writePinnedSkillHashes(workspace, skillDelivery);
+  }
   return withUnifiedTurn(
     {
       mode: 'turn',
@@ -2874,6 +3379,7 @@ async function cmdTurn() {
       unlocksStage: false,
       message,
       userMessage,
+      skillDelivery,
       ...(spoken?.report
         ? { composer: { userMessage, report: spoken.report, lead: spoken.lead || '' } }
         : {})
@@ -2921,14 +3427,14 @@ async function cmdAnswer(questionIdOrAnswer, ...rest) {
   }
   await fs.writeFile(review.abs, applied.content.endsWith('\n') ? applied.content : `${applied.content}\n`, 'utf8');
   try {
-    const aiAbs = path.join(workspace, 'savyre', 'stages', stageId, 'ai-output.md');
+    const aiAbs = path.join(workspace, ...stageDraftRel(stageId).split('/'));
     const aiText = await fs.readFile(aiAbs, 'utf8');
     const synced = applyAnswerToAiOutputTable(aiText, applied.answeredId, answer);
     if (synced.ok) {
       await fs.writeFile(aiAbs, synced.content.endsWith('\n') ? synced.content : `${synced.content}\n`, 'utf8');
     }
   } catch {
-    /* ai-output.md missing */
+    /* draft missing */
   }
   const aiReady = await aiOutputLooksWritten(workspace, stageId);
   const pass = await loadChatPass(workspace, stageId);
@@ -3013,7 +3519,7 @@ async function cmdConfirm() {
   const match = await requireChatPanelMatch(workspace, 'confirm');
   if (!match.ok) return match;
   const current = match.panelStageId;
-  if (current !== '01-task-input') {
+  if (!isTaskCaptureStage(current)) {
     return withUserMessage(
       {
         ok: false,
@@ -3021,46 +3527,41 @@ async function cmdConfirm() {
         unlocksStage: false,
         stageId: current,
         reason: current
-          ? `Confirm is Task Input only. The panel is on ${current}. Speak userMessage. Wait for /savyre-next. Do not start it yourself. Do not rewrite Task Input input.md.`
-          : 'Confirm is Task Input only. No currentStageId. Start a session in the Savyre panel first.'
+          ? `Confirm is Task Definition / Task Input only. The panel is on ${current}. Speak userMessage. Wait for /savyre-next. Do not start it yourself.`
+          : 'Confirm is Task Definition / Task Input only. No currentStageId. Start a session in the Savyre panel first.'
       },
       current ? chatUserMessage('confirm_not_stage_01') : chatUserMessage('start_panel')
     );
   }
-  const inputAbs = path.join(workspace, 'savyre', 'stages', '01-task-input', 'input.md');
-  let input = '';
-  try {
-    input = await fs.readFile(inputAbs, 'utf8');
-  } catch {
+  const inputFile = await readStageInput(workspace, current);
+  const input = inputFile.text || '';
+  const assigned = extractAssignedTaskPlain(input);
+  if (!assigned) {
     return withUserMessage(
-      { ok: false, action: 'confirm', unlocksStage: false, reason: 'No Stage 01 input.md' },
+      {
+        ok: false,
+        action: 'confirm',
+        unlocksStage: false,
+        reason: current === 's01-task-definition' ? 'No assignedTask in stage_input.json' : 'No Stage 01 input.md'
+      },
       chatUserMessage('ask_what_to_build')
     );
   }
-  if (!/##\s*Assigned task/i.test(input) || !input.replace(/##\s*Assigned task[\s\S]*?/i, '').trim()) {
-    const body = input.split(/##\s*Assigned task(?: \(in your own words\))?/i)[1] || '';
-    const cleaned = body.split(/\n##\s/)[0] || '';
-    if (!cleaned.replace(/[-*\s]/g, '').trim()) {
+  if (current === '01-task-input') {
+    if (!/##\s*Assigned task/i.test(input)) {
       return withUserMessage(
         { ok: false, action: 'confirm', unlocksStage: false, reason: 'No assigned task to confirm' },
         chatUserMessage('ask_what_to_build')
       );
     }
   }
-  const review = await readStageReview(workspace, '01-task-input');
+  const review = await readStageReview(workspace, current);
   const pending = listPendingReviewQuestions(review.text);
   const next = pending[0] || null;
   const confirmState = deriveChatTurnState({
     pendingQuestion: Boolean(next),
     aiReady: false
   });
-  const assigned = extractAssignedTaskPlain(input);
-  if (!assigned) {
-    return withUserMessage(
-      { ok: false, action: 'confirm', unlocksStage: false, reason: 'No assigned task to confirm' },
-      chatUserMessage('ask_what_to_build')
-    );
-  }
   const existingCp = await readJsonIfPresent(path.join(workspace, CHAT_CHECKPOINT_REL));
   const tracked = assigned
     ? trackOriginalTask({
@@ -3073,9 +3574,9 @@ async function cmdConfirm() {
   const checkpoint = await writeCheckpoint(workspace, {
     schemaVersion: '1.0',
     sessionId: session?.sessionId || 'local',
-    stageId: '01-task-input',
+    stageId: current,
     state: confirmState,
-    activeSkill: pickActiveSkillRef('01-task-input', confirmState),
+    activeSkill: pickActiveSkillRef(current, confirmState),
     pendingQuestionId: next?.id || null,
     artifactRevision: 1,
     lastValidationCodes: [],
@@ -3097,7 +3598,7 @@ async function cmdConfirm() {
   }
   if (!Array.isArray(responses.items)) responses.items = [];
   responses.items.push({
-    stageId: '01-task-input',
+    stageId: current,
     questionId: 'STAGE01-CONFIRM',
     answer: 'confirmed',
     artifactRevision: 1,
@@ -3106,10 +3607,10 @@ async function cmdConfirm() {
   responses.updatedAt = new Date().toISOString();
   await fs.mkdir(path.dirname(responsesFile), { recursive: true });
   await fs.writeFile(responsesFile, `${JSON.stringify(responses, null, 2)}\n`, 'utf8');
-  const reviewAfter = await readStageReview(workspace, '01-task-input');
+  const reviewAfter = await readStageReview(workspace, current);
   const pendingAfter = listPendingReviewQuestions(reviewAfter.text);
   const nextAfter = pendingAfter[0] || null;
-  const aiReady = await aiOutputLooksWritten(workspace, '01-task-input');
+  const aiReady = await aiOutputLooksWritten(workspace, current);
   const message = nextAfter
     ? `Task confirmed. Ask ${nextAfter.id} in this chat: ${nextAfter.question} When they answer, run /savyre-answer with their words.`
     : TALK_AFTER_CONFIRM_THEN_DRAFT;
@@ -3126,7 +3627,7 @@ async function cmdConfirm() {
     ? intakeReview
     : nextAfter
       ? chatUserMessage('ask_question', { question: nextAfter.question })
-      : chatUserMessage('task_confirmed_draft');
+      : chatUserMessage('task_confirmed_draft', { stageId: current });
   const afterState = deriveChatTurnState({
     pendingQuestion: Boolean(nextAfter),
     aiReady
@@ -3135,7 +3636,7 @@ async function cmdConfirm() {
     ...checkpoint,
     state: afterState,
     pendingQuestionId: nextAfter?.id || null,
-    activeSkill: pickActiveSkillRef('01-task-input', afterState)
+    activeSkill: pickActiveSkillRef(current, afterState)
   });
   return withUnifiedTurn(
     {
@@ -3143,7 +3644,7 @@ async function cmdConfirm() {
       action: 'confirm',
       unlocksStage: false,
       nextQuestion: nextAfter,
-      artifactTemplate: CHAT_ARTIFACT_HEADINGS['01-task-input'],
+      artifactTemplate: CHAT_ARTIFACT_HEADINGS[current],
       message,
       userMessage,
       ...(intakeReview ? { intakeReview } : {}),
@@ -3216,7 +3717,7 @@ async function cmdNext() {
     return cmdStart('');
   }
   const existing = await readJsonIfPresent(path.join(workspace, CHAT_CHECKPOINT_REL));
-  if (panelStageId === '01-task-input' && !existing?.developerConfirmed) {
+  if (isTaskCaptureStage(panelStageId) && !existing?.developerConfirmed) {
     return cmdConfirm();
   }
   const lastGf = await readLastGenerateFinalStageId(workspace);
@@ -3314,8 +3815,12 @@ async function main() {
     if (!brain) {
       reply(
         withUserMessage(
-          { mode: 'idle', reason: 'savyre-brain-missing' },
-          BRAIN_MISSING_USER_MESSAGE
+          {
+            mode: 'idle',
+            reason: 'savyre-brain-missing',
+            runtime: buildRuntimeCapabilities()
+          },
+          brainMissingRecoveryMessage()
         )
       );
       return;
@@ -3342,11 +3847,6 @@ async function main() {
     return;
   }
 
-  if (!brain) {
-    reply(allow());
-    return;
-  }
-
   const raw = await readStdin();
   if (!raw) {
     reply(allow());
@@ -3359,6 +3859,30 @@ async function main() {
     reply(allow());
     return;
   }
+
+  if (!brain) {
+    const workspace = await findWorkspaceFromHook(input);
+    const { manifest } = await loadActive(workspace);
+    if (manifest) {
+      const verified = await verifyManifest(manifest, workspace);
+      if (verified.ok) {
+        reply(
+          deny(
+            brainMissingRecoveryMessage(),
+            [
+              brainMissingRecoveryMessage(),
+              'Savyre stage enforcement is active but the local runtime brain is unavailable.',
+              'Use the Savyre panel for stage work until @savyre/run-config is compatible.'
+            ].join(' ')
+          )
+        );
+        return;
+      }
+    }
+    reply(allow());
+    return;
+  }
+
   const out = await handleHook(input);
   reply(out);
 }

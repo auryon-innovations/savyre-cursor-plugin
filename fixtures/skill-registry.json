@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "1.0.0",
+  "pluginRoot": "C:\\Users\\Ashish\\Documents\\Projects\\savyre-cursor-plugin",
+  "generatedAt": "2026-09-14T09:14:26.470Z",
+  "skills": [
+    {
+      "name": "savyre-chat-continuation",
+      "sha256": "5b9cbe5daf5959218c506fb51a70453d7ce565949669c52c0ec2bb384abfa867",
+      "present": true
+    },
+    {
+      "name": "savyre-codebase-discovery",
+      "sha256": "780b3532bad3cd193709dda5e928aa87ffa6feef446e186b03753bb53b3904d9",
+      "present": true
+    },
+    {
+      "name": "savyre-evidence-grounding",
+      "sha256": "ebf83d9e744d1a91bfa5c19c719ba3c5c653085218bb014737fddbd40d857539",
+      "present": true
+    },
+    {
+      "name": "savyre-failure-recovery",
+      "sha256": "1986f4d109b7fba84d057491d2c045e647bb7bb0484974c407fefe0ae41c4c1c",
+      "present": true
+    },
+    {
+      "name": "savyre-impact-analyst",
+      "sha256": "bd3b0ed5106b40e95491f7c5afaf439e294747658758e9637da579afa4b8ea38",
+      "present": true
+    },
+    {
+      "name": "savyre-implementation",
+      "sha256": "f273384dbcaf79b6c6527930fb7ae51b8dd75c47a326b28608833defd9029a11",
+      "present": true
+    },
+    {
+      "name": "savyre-intervention-judge",
+      "sha256": "5a5c531c9573f67729af26d2b4842bd6f43a8f3b034875eb59153ca60578e116",
+      "present": true
+    },
+    {
+      "name": "savyre-plan-generation-and-review",
+      "sha256": "bcae758fdf3b1a00906c07729ee34b49e1c36c50e530d1e502f13ea55eb4f72d",
+      "present": true
+    },
+    {
+      "name": "savyre-requirement-analyst",
+      "sha256": "648238b7c6335fc83030155c149f085769bd47584f4b04f16692f5c6784fb002",
+      "present": true
+    },
+    {
+      "name": "savyre-requirement-challenge",
+      "sha256": "db15a51de6bde8701a4f3c8ca2ada2bf8b6bfef92e1f193d3532986d8a4e3646",
+      "present": true
+    },
+    {
+      "name": "savyre-response-composer",
+      "sha256": "e712277109f4c23e106a702d9054d7e816d7ff91dc64b07b92634c6641740680",
+      "present": true
+    },
+    {
+      "name": "savyre-run-stage",
+      "sha256": "d94bf3264a6df57fb9d5ed90038f9608af08d8da23daa6057ba854dc04d65488",
+      "present": true
+    },
+    {
+      "name": "savyre-task-input",
+      "sha256": "b81039338aec2fd198a80cf10ba3e13be6adc530e51f7496ad0f14d19c972ff3",
+      "present": true
+    },
+    {
+      "name": "savyre-unified-chat-turn",
+      "sha256": "5eb34c68d6d2d202896bca78491550d2b0c2d10c352f766d83931486882c3cec",
+      "present": true
+    },
+    {
+      "name": "savyre-verification-before-completion",
+      "sha256": "7a05d37ece84d3140c89c92065e0ea63e9177cfb8a71266ff04fb059b31db69c",
+      "present": true
+    }
+  ]
+}

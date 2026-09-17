@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "1",
+  "executionId": "exec-s05-fixture",
+  "workflowId": "wf-local-demo",
+  "stageId": "s05-test-resolve",
+  "workspaceRoot": "*",
+  "issuedAt": "2026-08-25T00:00:00.000Z",
+  "expiresAt": "2099-01-01T00:00:00.000Z",
+  "singleUse": true,
+  "writeMode": "read_write",
+  "allowedTools": ["Read", "Grep", "Glob", "SemanticSearch", "Write", "StrReplace"],
+  "deniedTools": ["Delete", "Shell", "Task"],
+  "allowedPaths": ["stages/s05_test_resolve/verification_report.md"],
+  "excludedPaths": [".env", ".env.local", ".env.production", "id_rsa", "id_ed25519", "*.pem", "credentials.json", "secrets.json"],
+  "evidenceRequired": true,
+  "keyId": "savyre-local-test",
+  "signature": "template-only-run-cli-rebinds-workspace-and-resigns"
+}

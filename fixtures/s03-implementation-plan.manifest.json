@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "1",
+  "executionId": "exec-s03-fixture",
+  "workflowId": "wf-local-demo",
+  "stageId": "s03-implementation-plan",
+  "workspaceRoot": "*",
+  "issuedAt": "2026-08-25T00:00:00.000Z",
+  "expiresAt": "2099-01-01T00:00:00.000Z",
+  "singleUse": true,
+  "writeMode": "read_write",
+  "allowedTools": ["Read", "Grep", "Glob", "SemanticSearch", "Write", "StrReplace"],
+  "deniedTools": ["Delete", "Shell", "Task"],
+  "allowedPaths": [
+    "stages/s03_implementation_plan/implementation_plan.md",
+    "stages/s03_implementation_plan/implementation_backlog.json"
+  ],
+  "excludedPaths": [".env", ".env.local", ".env.production", "id_rsa", "id_ed25519", "*.pem", "credentials.json", "secrets.json"],
+  "evidenceRequired": true,
+  "keyId": "savyre-local-test",
+  "signature": "template-only-run-cli-rebinds-workspace-and-resigns"
+}

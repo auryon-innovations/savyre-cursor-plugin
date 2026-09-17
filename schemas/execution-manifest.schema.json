@@ -27,7 +27,26 @@
     "schemaVersion": { "type": "string", "const": "1" },
     "executionId": { "type": "string", "minLength": 1 },
     "workflowId": { "type": "string", "minLength": 1 },
-    "stageId": { "type": "string", "minLength": 1 },
+    "stageId": {
+      "type": "string",
+      "enum": [
+        "01-task-input",
+        "02-requirement-analysis",
+        "03-codebase-discovery",
+        "04-impact-analysis",
+        "05-plan-generation-and-review",
+        "06-implementation",
+        "07-implementation-tracking",
+        "08-implementation-code-review",
+        "09-test-discovery",
+        "10-test-generation-and-review",
+        "11-test-execution",
+        "12-debugging-iteration",
+        "13-security-regression-review",
+        "14-final-code-review",
+        "15-final-summary-ai-reflection"
+      ]
+    },
     "workspaceRoot": { "type": "string", "minLength": 1 },
     "issuedAt": { "type": "string", "format": "date-time" },
     "expiresAt": { "type": "string", "format": "date-time" },

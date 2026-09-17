@@ -28,7 +28,7 @@ Stage textbooks live in the **Savyre extension** `prompts/stages/`, not in this 
 ## While enforced
 
 - Fetch **current-stage instructions** from Savyre MCP when it exists. If MCP is not connected, say so and wait.
-- Follow the active permission slip. Stages 02–03 may write that stage's `ai-output.md` plus Stage 02 `challenge-findings.json` or Stage 03 `evidence-map.json`. Stages 04–05 are read-only. Do not edit application source, run shell (except the plugin lifecycle CLI), start write-enabled subagents, or approve the stage.
+- Follow the active permission slip. Stages 02–05 may write that stage's `ai-output.md` plus Stage 02 `challenge-findings.json` or Stage 03 `evidence-map.json`. Do not edit application source on Stages 02–05, run shell (except the plugin lifecycle CLI), start write-enabled subagents, or approve the stage.
 - Submit structured output only as Savyre instructs. Cursor Agent cannot record `ACCEPTED` or enable the next stage.
 
 ## When the user is done

@@ -3,7 +3,7 @@
  * The open plugin does not contain canned Chat copy. A plugin clone
  * without the Savyre extension/org package cannot serve Chat userMessage.
  */
-import { existsSync, readdirSync } from 'fs';
+import { existsSync, readdirSync, statSync } from 'fs';
 import os from 'os';
 import path from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
@@ -22,7 +22,10 @@ const FALLBACK_REQUIRED_EXPORTS = [
   'CHAT_SPECIALIZED_SKILL_ID',
   'CHAT_SPECIALIZED_STATES',
   'CHAT_VERIFY_SKILL_ID',
-  'RUN_CONFIG_VERSION'
+  'RUN_CONFIG_VERSION',
+  'selectNextImplementableBacklogId',
+  'mergeAppliedBacklogIds',
+  'taskSummaryLooksApplied'
 ];
 
 function indexAt(root) {
@@ -153,6 +156,8 @@ export function resolveSavyreBrainIndex(candidates = null) {
 
 let cached = null;
 let cachedReport = null;
+let cachedIndexPath = null;
+let cachedMtimeMs = 0;
 
 export async function buildSavyreRuntimeReport() {
   const candidates = await resolveSavyreBrainCandidates();
@@ -181,15 +186,32 @@ export async function buildSavyreRuntimeReport() {
 }
 
 export async function loadSavyreBrain() {
-  if (cached) return cached;
   const report = await buildSavyreRuntimeReport();
   cachedReport = report;
-  if (!report.selected) return null;
+  if (!report.selected) {
+    cached = null;
+    cachedIndexPath = null;
+    cachedMtimeMs = 0;
+    return null;
+  }
+  const indexPath = report.selected.indexPath;
+  let mtimeMs = 0;
   try {
-    const mod = await import(pathToFileURL(report.selected.indexPath).href);
+    mtimeMs = statSync(indexPath).mtimeMs;
+  } catch {
+    mtimeMs = Date.now();
+  }
+  if (cached && cachedIndexPath === indexPath && cachedMtimeMs === mtimeMs) {
+    return cached;
+  }
+  try {
+    // Bust Node's ESM cache so vendored brain updates load without restarting Cursor.
+    const mod = await import(`${pathToFileURL(indexPath).href}?t=${mtimeMs}`);
     const validation = validateBrainModule(mod);
     if (!validation.ok) return null;
     cached = mod;
+    cachedIndexPath = indexPath;
+    cachedMtimeMs = mtimeMs;
     return cached;
   } catch {
     return null;
@@ -203,4 +225,6 @@ export function getSavyreRuntimeReport() {
 export function resetSavyreBrainCache() {
   cached = null;
   cachedReport = null;
+  cachedIndexPath = null;
+  cachedMtimeMs = 0;
 }

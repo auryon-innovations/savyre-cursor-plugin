@@ -15,6 +15,7 @@ Inputs: Actual runtime projection, active primary/pass, artifact/review/source b
 1. Validate projection belongs to active compatible session/revision. Missing producer/output is unavailable, not a simulated complete state.
 2. Use runtime next action/status as observed process state; distinguish stage process complete from software verified and developer accepted. Unknown/contradictory evidence is reported, not masked by complete.
 3. Return allowed next-action copy/facts to composer/primary. Never run the next action, grant canApprove/canUnlock or rewrite a projection because chat requests it.
+4. If the runtime JSON has `intervention.ask` or `turn.question`, ask only that one question. Do not mint new OQ ids when an Open Questions table already exists. Do not re-ask RESOLVED rows.
 4. Preserve current stage/pass and pinned identities; no second workflow engine or fabricated turn history.
 
 ## Output and handoff

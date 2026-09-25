@@ -26,7 +26,7 @@ Read `references/invocation-map.md` before selecting a dedicated/shared pass. S0
 ## Procedure
 
 1. Capture exact designated original task separately from a helpful restatement; distinguish product requirements from workflow instructions.
-2. Extract supported requirements and observable criteria; include user stories only when actor/value helps feature work. Classify confirmed requirements as functional or non-functional. Use the frozen runtime/schema ID policy when available; the proposed new-contract display prefixes are FR-### for functional requirements, NFR-### for non-functional requirements, US-### for applicable user stories and AC-### for acceptance criteria. Existing session IDs take precedence and must not be silently renamed. Obtain canonical IDs from the runtime, never invent approval-state IDs. Link each story and criterion to its requirement/source; technical fixes need no forced story. Preserve IDs across review/rework, including retired IDs, and never recycle them.
+2. Extract supported requirements and observable criteria; include user stories only when actor/value helps feature work. Link story/criterion to requirement/source; technical fixes need no forced story.
 3. Challenge for contradictions, inferred features, vague acceptance or unaccepted assumptions. Ask one material blocking question at a time with stable runtime IDs; reuse resolved decisions. Do not ask routine questions unrelated to the task.
 4. Revise analyzed brief after answers, then request one final confirmation of the current complete contract. **Call out Acceptance Criteria by ID** and ask the developer to approve that exact AC set before lock. Reopened scope creates a new draft/revision.
 
@@ -35,7 +35,7 @@ Produce a concise response with outcome, material question/blocker if any and th
 
 Draft sections: **Original Task; Understanding; Requirements; User Stories (if applicable); Acceptance Criteria; Constraints and Exclusions; Proposed/Accepted Assumptions; Decisions and Open Questions; Confirmation Needed**. Omit irrelevant optional detail rather than fill generic sections with invented facts. Structured supporting artifacts: **task_contract.json**.
 
-Required supporting content: Original text; requirement kind and stable requirement/story/criterion/source links; constraints/exclusions; confirmed decisions and explicitly accepted assumptions; runtime confirmation/final revision refs. Preview payload has no fabricated approved state.
+Required supporting content: Original text; stable requirement/story/criterion/source links; constraints/exclusions; confirmed decisions and explicitly accepted assumptions; runtime confirmation/final revision refs. Preview payload has no fabricated approved state.
 
 Confirmation boundary: After the draft lists every active **AC-###**, speak `userMessage` and explicitly ask the developer to **approve those acceptance criteria** (exact wording/IDs), not only the overall brief. One final S01 task-contract confirmation after analysis/challenge; no confirmation is implied by the draft. Chat cannot stamp approval or unlock the stage. In your own 1–2 substance sentences before `userMessage`, name the AC IDs (e.g. AC-001…AC-00N) and ask whether that set is approved.
 

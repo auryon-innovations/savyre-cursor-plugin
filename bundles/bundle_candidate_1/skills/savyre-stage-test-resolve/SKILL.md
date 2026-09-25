@@ -14,6 +14,15 @@ Read `references/runtime-boundary.md` before managed or preview work. This packa
 ## Reusable skill invocation
 Read `references/invocation-map.md` before selecting a dedicated/shared pass. S01 uses savyre-requirement-challenge after analyzed draft; S02 uses savyre-evidence-grounding after discovery before impact. Cross-stage consumers run only when their runtime records/checkpoint are present. Managed invocation requires registered compatible package and delegated pass; missing assignment/availability is a diagnostic or explicit runtime fallback, not proof a call ran. The primary remains the stage owner; do not call savyre-run-stage recursively.
 
+## AC verification matrix (required)
+
+- Include **every active approved AC** from the S01 contract version, even if no check exists yet. Missing checks are `unverified`, not pass.
+- Build a criterion-to-check matrix with expected results, current run/manual-evidence refs, and status (`passed` | `failed` | `blocked` | `unverified`).
+- Aggregate precedence when mixed: failed → blocked → unverified → passed.
+- Failed, blocked, skipped, stale, or unexecuted required checks prevent claiming S05 complete. Narrative-only claims are not evidence.
+- Historical failures remain visible after successful reruns; current applicable results determine readiness.
+- **S05 does not create or edit executable tests, test config, or app source.** Propose missing/updated checks; execute approved edits only through an authorized **S04** rework item, then rerun here.
+
 ## Procedure
 
 1. Inventory observed tests/helpers/commands and setup/scan limitations. Test existence is not pass/coverage; do not prescribe a new framework.

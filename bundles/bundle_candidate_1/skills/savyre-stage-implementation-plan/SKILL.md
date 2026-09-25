@@ -14,19 +14,30 @@ Read `references/runtime-boundary.md` before managed or preview work. This packa
 ## Reusable skill invocation
 Read `references/invocation-map.md` before selecting a dedicated/shared pass. S01 uses savyre-requirement-challenge after analyzed draft; S02 uses savyre-evidence-grounding after discovery before impact. Cross-stage consumers run only when their runtime records/checkpoint are present. Managed invocation requires registered compatible package and delegated pass; missing assignment/availability is a diagnostic or explicit runtime fallback, not proof a call ran. The primary remains the stage owner; do not call savyre-run-stage recursively.
 
+## AC coverage and TDD planning (required)
+
+- Consume the **approved S01 contract version**. Do not invent new product AC here; material new outcomes return to S01.
+- Map **every active AC** to planned checks (automated and/or manual), expected outcomes, responsible backlog items, dependencies, and relevant regression scope.
+- Prefer **one behavior item** that owns both its tests and implementation for that contribution. Infrastructure/setup and documentation items may use completion criteria and a recorded exemption.
+- For each item record **`tddApplicability: required | exempt`**. Default for new/changed automatically checkable behavior is **required**. An exemption needs a human-approved reason and an alternative verification plan; AI cannot approve its own exemption.
+- Exemption waives red-first only — it never waives acceptance verification or turns a failed AC into passed.
+- Missing tooling is a planning gap (propose setup work or explicit manual exception), not an automatic exemption.
+- An AC may span several items; the overall AC stays unverified until all required checks pass in S05.
+- **Do not** include source implementation or claim executable test files were generated in S03.
+
 ## Procedure
 
 1. Choose a repository-specific approach within confirmed scope; explain consequential trade-offs with evidence rather than force irrelevant alternatives or effort numbers. Material product decisions return to S01.
-2. Create an approved, executable backlog with stable runtime-issued IDs, requirement/story refs or technical justification, file scope, dependencies and done checks. Preserve existing IDs and use the frozen backlog schema: FS-### for FUNCTIONAL_STORY, NFR-### for NON_FUNCTIONAL_STORY, TT-### for TECHNICAL_TASK and the schema-approved test-task prefix for TEST_TASK (do not assert TEST-### if the runtime uses another prefix). A backlog NFR-### and an S01 NFR-### have different identities: always qualify references by artifact/type. Trace FS/NFR items to approved S01 requirements; use TT dependencies or technical justification for implementation work. New product requirements return to S01. Never renumber or recycle IDs during rework.
+2. Create an approved, executable backlog with stable runtime-issued IDs, requirement/story/AC refs or technical justification, file scope, dependencies, done checks, planned check IDs/methods, and `tddApplicability`. Preserve existing IDs and use the frozen backlog schema: FS-### for FUNCTIONAL_STORY, NFR-### for NON_FUNCTIONAL_STORY, TT-### for TECHNICAL_TASK and the schema-approved test-task prefix for TEST_TASK (do not assert TEST-### if the runtime uses another prefix). A backlog NFR-### and an S01 NFR-### have different identities: always qualify references by artifact/type. Trace FS/NFR items to approved S01 requirements; use TT dependencies or technical justification for implementation work. New product requirements return to S01. Never renumber or recycle IDs during rework.
 3. Describe verification approach, relevant risks and rollback where applicable. Detailed case strategy belongs to S05. Do not include source implementation or claim test files were generated.
-4. Check narrative/backlog agreement; request explicit approval of the exact plan/backlog revision before implementation. Missing optional docs are labeled; verified authoritative method delivery can replace absent MCP.
+4. Check narrative/backlog agreement and full active-AC coverage; request explicit approval of the exact plan/backlog revision before implementation. Missing optional docs are labeled; verified authoritative method delivery can replace absent MCP.
 
 ## Output contract
 Produce a concise response with outcome, material question/blocker if any and the verified next action. Detailed content belongs in the assigned draft `implementation_plan.md` or returned preview content when no writer is delegated.
 
-Draft sections: **Approach and Rationale; Implementation Tasks; Dependencies and Sequence; Requirement Traceability; Done Checks; Verification Approach; Relevant Risks and Rollback; Approval Needed**. Omit irrelevant optional detail rather than fill generic sections with invented facts. Structured supporting artifacts: **implementation_backlog.json**.
+Draft sections: **Approach and Rationale; Implementation Tasks; Dependencies and Sequence; Requirement and AC Traceability; TDD Applicability and Exceptions; Done Checks; Verification Approach; Relevant Risks and Rollback; Approval Needed**. Omit irrelevant optional detail rather than fill generic sections with invented facts. Structured supporting artifacts: **implementation_backlog.json**.
 
-Required supporting content: Executable backlog items/sourceRequirementRefs or justification; file scope/dependencies/order/done checks; compatible schema and runtime approval ref. No invented IDs/schema enforcement.
+Required supporting content: Executable backlog items/sourceRequirementRefs or justification; AC refs; file scope/dependencies/order/done checks; planned checks; tddApplicability and approved exception where applicable; compatible schema and runtime approval ref. No invented IDs/schema enforcement.
 
 Confirmation boundary: Explicit authoritative backlog approval; editing scope invalidates downstream work.
 

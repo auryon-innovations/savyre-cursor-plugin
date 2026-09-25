@@ -13,8 +13,8 @@ Inputs: Current primary draft/internal-pass outcomes, required action/approval s
 ## Procedure
 
 1. Check draft completeness/traceability, required challenge/grounding/strategy/review records and actual checkpoint decisions according to stage/internal-step policy. Missing policy yields unassessed, not invented gate rules.
-2. S01 requires current analyzed contract/decisions and actual final confirmation for publication; S02 grounding/limits; S03 exact backlog approval; S04 real applied/status/review records; S05 actual fresh/manual-labeled verification; S06 criterion gate evidence; S07 permitted selection/truthful summary. Do not require every later internal record during an earlier draft checkpoint.
-3. Distinguish awaiting_review from missing/failed/stale. A complete final file, high score or successful no-assertion command cannot create verified criteria. Do not fabricate hashes/reviews/approvals or official question IDs.
+2. S01 requires current analyzed contract/decisions, hybrid human-approved AC, and actual final confirmation for publication (no executable tests in S01); S02 grounding/limits; S03 exact backlog approval with active-AC coverage and TDD applicability; S04 real applied/status/review records plus red/green evidence for required-TDD items; S05 AC matrix with actual fresh/manual-labeled verification (S05 must not write tests); S06 criterion gate evidence; S07 permitted selection/truthful summary. Do not require every later internal record during an earlier draft checkpoint.
+3. Distinguish awaiting_review from missing/failed/stale. A complete final file, high score or successful no-assertion command cannot create verified criteria. Chat cannot stamp ACCEPTED or unlock stages. Do not fabricate hashes/reviews/approvals or official question IDs.
 4. Report blockers/missing checks to primary/runtime. Even a clean advisory check cannot write final.md/state or execute transitions; runtime composition/validation and developer actions remain authoritative.
 
 ## Output and handoff

@@ -23,6 +23,16 @@ Read `references/invocation-map.md` before selecting a dedicated/shared pass. S0
 - Historical failures remain visible after successful reruns; current applicable results determine readiness.
 - **S05 does not create or edit executable tests, test config, or app source.** Propose missing/updated checks; execute approved edits only through an authorized **S04** rework item, then rerun here.
 
+## Flows (Node and Python)
+
+**Flow A — tests already exist.** Inventory files and commands. Map every active AC. Run the project's Node command (`npm test` or `node --test`) or Python command (`pytest`). Do not rewrite the suite when those checks already cover the active AC.
+
+**Flow B — tests missing or incomplete.** Mark the AC `unverified`. Record a gap (AC id, suggested command, stack). Propose an S04 item for `savyre-test-author`. Do not create test files here. After that item is approved and tests exist, rerun and update the matrix.
+
+v1 stacks are Node and Python. Detection order: declared script, then manifest (`package.json`, `pyproject.toml`), then conventions (`*.test.*`, `test_*.py`, `*_test.py`). If no runner exists, record a manual procedure. That is not a pass.
+
+Chat copy follows the same split: inventory says list and run existing checks; a gap says the AC stays unverified and the next write is an authorized S04 test-author item. Continue with `/savyre-next`. Chat does not finish the stage by itself.
+
 ## Procedure
 
 1. Inventory observed tests/helpers/commands and setup/scan limitations. Test existence is not pass/coverage; do not prescribe a new framework.

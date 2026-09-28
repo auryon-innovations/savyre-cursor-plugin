@@ -245,13 +245,51 @@ function stageTitle(stageId) {
   return brain.stageTitle(stageId);
 }
 
+function formatBacklogBlockedMessage(remainingIds, stuck) {
+  const fromBrain =
+    brain && typeof brain.chatUserMessage === 'function'
+      ? brain.chatUserMessage('backlog_blocked', {
+          remainingBacklogIds: remainingIds,
+          stuckBacklog: stuck
+        })
+      : '';
+  if (typeof fromBrain === 'string' && fromBrain.trim()) return fromBrain.trim();
+  const remaining = (remainingIds || []).map((id) => String(id || '').trim()).filter(Boolean);
+  const waits = (stuck || [])
+    .map((row) => {
+      const id = String(row?.id || '').trim();
+      const on = (row?.waitingOn || []).map((dep) => String(dep || '').trim()).filter(Boolean);
+      if (!id) return '';
+      return on.length ? `${id} waits on ${on.join(', ')}` : `${id} cannot start`;
+    })
+    .filter(Boolean);
+  const list = remaining.length ? remaining.join(', ') : 'some tasks';
+  const why = waits.length
+    ? `None of them can start yet: ${waits.join('; ')}.`
+    : 'None of them can start until their dependencies are done.';
+  return `Build & Review stays open. These tasks are still not done: ${list}. ${why} Fix that order in the backlog, then run \`/savyre-next\`. Do not lock this stage yet.`;
+}
+
 function chatUserMessage(kind, opts = {}) {
+  if (kind === 'backlog_blocked') {
+    return formatBacklogBlockedMessage(opts.remainingBacklogIds, opts.stuckBacklog);
+  }
   if (!brain) return BRAIN_MISSING_USER_MESSAGE;
   return brain.chatUserMessage(kind, opts);
 }
 
 function chatStartUserMessage(input) {
   if (!brain) return BRAIN_MISSING_USER_MESSAGE;
+  const stageId = String(input?.stageId || '');
+  const nextId = String(input?.nextBacklogItemId || '').trim();
+  const remaining = Array.isArray(input?.remainingBacklogIds) ? input.remainingBacklogIds : [];
+  if (
+    (stageId === 's04-build-review' || stageId === '06-implementation') &&
+    !nextId &&
+    remaining.length
+  ) {
+    return formatBacklogBlockedMessage(remaining, input?.stuckBacklog || []);
+  }
   return brain.chatStartUserMessage(input);
 }
 
@@ -287,7 +325,14 @@ const WRITE_STAGES = new Set([
   '03-codebase-discovery',
   '04-impact-analysis',
   '05-plan-generation-and-review',
-  '06-implementation'
+  '06-implementation',
+  's01-task-definition',
+  's02-code-discovery',
+  's03-implementation-plan',
+  's04-build-review',
+  's05-test-resolve',
+  's06-delivery-readiness',
+  's07-handoff'
 ]);
 
 const CONTINUE_SLASH = '/savyre-next';
@@ -1121,8 +1166,129 @@ const LIFECYCLE_VERBS = 'run|start|status|stop|turn|confirm|next|answer|action';
 
 function isLifecycleCommand(command) {
   const c = String(command || '').replace(/\\/g, '/');
-  if (!/savyre-guard\.mjs/.test(c)) return false;
-  return new RegExp(`savyre-guard\\.mjs(?:["']|\\s)+["']?(${LIFECYCLE_VERBS})\\b`, 'i').test(c);
+  if (!/savyre-(?:guard|cli)\.mjs/.test(c)) return false;
+  return new RegExp(
+    `savyre-(?:guard|cli)\\.mjs(?:["']|\\s)+["']?(${LIFECYCLE_VERBS})\\b`,
+    'i'
+  ).test(c);
+}
+
+function isBuildReviewTestCommand(command) {
+  if (typeof brain?.isBuildReviewTestCommand === 'function') {
+    return brain.isBuildReviewTestCommand(command) === true;
+  }
+  const compact = String(command || '').replace(/\s+/g, ' ').trim();
+  if (!compact || /[`$()]/.test(compact)) return false;
+  const body = compact.replace(/^cd\s+(?:\.{1,2}[/\\])?[\w./\\-]+\s+&&\s+/i, '');
+  if (/[|&;]/.test(body)) return false;
+  return /^(?:npm\s+(?:test|run\s+test)(?:\s+--(?:\s+\S+)*)?|node\s+--test(?:\s+\S+)*|npx\s+(?:vitest|jest)(?:\s+\S+)*|(?:python3?|py)\s+-m\s+pytest(?:\s+\S+)*|pytest(?:\s+\S+)*)$/i.test(
+    body
+  );
+}
+
+function classifyTestCommandResult(input) {
+  if (typeof brain?.classifyTestCommandResult === 'function') {
+    return brain.classifyTestCommandResult(input);
+  }
+  const output = String(input?.output || '');
+  const code = input?.exitCode;
+  const failCount = output.match(/#\s*fail\s+(\d+)/i);
+  const passCount = output.match(/#\s*pass\s+(\d+)/i);
+  const fails = failCount ? Number(failCount[1]) : null;
+  const passes = passCount ? Number(passCount[1]) : null;
+  const setup =
+    /cannot find module|ERR_MODULE_NOT_FOUND|ENOENT|npm ERR!|is not recognized|not found/i.test(output) &&
+    !(fails && fails > 0) &&
+    !/\bnot ok\b/i.test(output);
+  if (setup && code !== 0) return { kind: 'setup_error', outcome: 'setup_error' };
+  if ((fails !== null && fails > 0) || /\bnot ok\b/i.test(output)) return { kind: 'red', outcome: 'failed' };
+  if (code === 0 || (fails === 0 && passes !== null && passes > 0)) return { kind: 'green', outcome: 'passed' };
+  if (code != null && code !== 0) return { kind: 'red', outcome: 'failed' };
+  return null;
+}
+
+function shellOutputText(input) {
+  const response = input?.tool_response || input?.toolResponse || input?.output || '';
+  if (typeof response === 'string') return response;
+  if (response && typeof response === 'object') {
+    return [response.stdout, response.stderr, response.output, response.content]
+      .filter((part) => typeof part === 'string' && part.trim())
+      .join('\n');
+  }
+  return '';
+}
+
+function shellExitCode(input) {
+  const response = input?.tool_response || input?.toolResponse;
+  const code = input?.exit_code ?? input?.exitCode ?? response?.exit_code ?? response?.exitCode ?? response?.code;
+  const n = Number(code);
+  return Number.isFinite(n) ? n : null;
+}
+
+async function recordBuildReviewTestRun(workspace, manifest, input) {
+  const command = input.command || input.tool_input?.command || '';
+  const classified = classifyTestCommandResult({
+    exitCode: shellExitCode(input),
+    output: shellOutputText(input)
+  });
+  if (!classified || classified.kind === 'setup_error') {
+    await appendEvidence(workspace, {
+      executionId: manifest?.executionId || null,
+      hook: 'afterShellExecution',
+      decision: 'note',
+      tool: 'Shell',
+      reason: classified?.kind || 'test_unclassified'
+    });
+    return;
+  }
+  const itemId = await testRunBacklogItemId(workspace, command);
+  if (!itemId) return;
+  const folder = path.join(workspace, 'stages', 's04_build_review', 'tasks', itemId);
+  const metaPath = path.join(folder, 'task_metadata.json');
+  const existing = (await readJsonIfPresent(metaPath)) || {
+    schemaVersion: '1.0.0',
+    artifactType: 'task_metadata',
+    stageId: 's04-build-review',
+    backlogItemId: itemId
+  };
+  const prev = existing.tddEvidence && typeof existing.tddEvidence === 'object' ? existing.tddEvidence : {};
+  const runId = `test-${Date.now().toString(36)}-${classified.kind}`;
+  const tddEvidence = { ...prev };
+  if (classified.kind === 'red') {
+    tddEvidence.redRunId = runId;
+    tddEvidence.redOutcome = 'failed';
+    tddEvidence.redIsBehaviorFailure = true;
+  } else {
+    tddEvidence.greenRunId = runId;
+    tddEvidence.greenOutcome = 'passed';
+  }
+  existing.tddEvidence = tddEvidence;
+  existing.backlogItemId = existing.backlogItemId || itemId;
+  await fs.mkdir(folder, { recursive: true });
+  await fs.writeFile(metaPath, `${JSON.stringify(existing, null, 2)}\n`, 'utf8');
+  await appendEvidence(workspace, {
+    executionId: manifest?.executionId || null,
+    hook: 'afterShellExecution',
+    decision: 'record',
+    tool: 'Shell',
+    reason: `${classified.kind}:${itemId}:${runId}`
+  });
+}
+
+async function testRunBacklogItemId(workspace, command) {
+  const fromCmd = String(command || '').match(/\b((?:FS|NFR|TT|TEST)-\d+)\b/i);
+  if (fromCmd) return fromCmd[1].toUpperCase();
+  try {
+    const report = await fs.readFile(
+      path.join(workspace, 'stages', 's04_build_review', 'change_report.md'),
+      'utf8'
+    );
+    const named = report.match(/\*\*Backlog item(?: this turn)?:\*\*\s*((?:FS|NFR|TT|TEST)-\d+)/i);
+    if (named) return named[1].toUpperCase();
+  } catch {
+    /* no report yet */
+  }
+  return readNextBacklogItemId(workspace, 's04-build-review');
 }
 
 function resolveSavyreCliJs() {
@@ -1401,6 +1567,7 @@ function withUnifiedTurn(payload, workspace) {
         /to lock /.test(payload.userMessage) ||
         /Please check `/.test(payload.userMessage) ||
         /I'll implement/.test(payload.userMessage) ||
+        /Build & Review stays open/.test(payload.userMessage) ||
         /do not lock Build/.test(payload.userMessage) ||
         /I've written `/.test(payload.userMessage) ||
         /I've saved that under `/.test(payload.userMessage) ||
@@ -2104,7 +2271,8 @@ function chatGenerateFinalBlockers({
   hasPendingBlocking,
   challengeComplete,
   evidenceReady,
-  hasRemainingBacklog
+  hasRemainingBacklog,
+  backlogBlocked
 }) {
   if (typeof brain?.chatGenerateFinalBlockers === 'function') {
     return brain.chatGenerateFinalBlockers({
@@ -2113,11 +2281,13 @@ function chatGenerateFinalBlockers({
       hasPendingBlocking,
       challengeOk: challengeComplete,
       evidenceOk: evidenceReady,
-      hasRemainingBacklog
+      hasRemainingBacklog,
+      backlogBlocked
     });
   }
   if (!aiReady) return { ok: false, kind: 'draft_now' };
   if (hasPendingBlocking) return { ok: false, kind: 'need_answers' };
+  if (backlogBlocked) return { ok: false, kind: 'backlog_blocked' };
   if (hasRemainingBacklog) return { ok: false, kind: 'implement' };
   if (
     (stageId === '02-requirement-analysis' || stageId === 's01-task-definition') &&
@@ -2290,17 +2460,22 @@ async function chatStageFollowupMessage(workspace, stageId, next) {
   }
   const aiReady = await aiOutputLooksWritten(workspace, stageId);
   const pass = await loadChatPass(workspace, stageId);
-  const nextBacklogItemId = await readNextBacklogItemId(workspace, stageId);
-  const hasRemainingBacklog = Boolean(nextBacklogItemId);
+  const backlog = backlogFlags(await readBacklogWork(workspace, stageId));
+  const nextBacklogItemId = backlog.nextBacklogItemId;
+  const hasRemainingBacklog = backlog.hasRemainingBacklog;
   const gate = chatGenerateFinalBlockers({
     stageId,
     aiReady: aiReady && !hasRemainingBacklog,
     hasPendingBlocking: false,
     challengeComplete: pass.challengeComplete,
     evidenceReady: pass.evidenceReady,
-    hasRemainingBacklog
+    hasRemainingBacklog,
+    backlogBlocked: backlog.backlogBlocked
   });
   if (stageId === '06-implementation' || stageId === 's04-build-review') {
+    if (backlog.backlogBlocked) {
+      return formatBacklogBlockedMessage(backlog.remainingBacklogIds, backlog.stuckBacklog);
+    }
     if (nextBacklogItemId) {
       return `Implement only backlog item \`${nextBacklogItemId}\` this turn. Write its application files and \`${stageDraftRel(stageId)}\` for that id only, then stop. Speak userMessage. Wait for /savyre-next. Do not lock Build & Review while backlog items remain.`;
     }
@@ -2445,9 +2620,11 @@ function buildSessionContext(manifest, source) {
   if (isImplement) {
     const reportRel = stageDraftRel(manifest.stageId);
     const nextId = source.nextBacklogItemId || '';
-    writeHint = nextId
-      ? `You may write application files with Write/StrReplace for backlog item \`${nextId}\` only. Do not implement any other backlog id this turn. Also write \`${reportRel}\` naming only \`${nextId}\` and that item's changed paths in backticks (and ## Open Questions). Then stop. Do not run Shell, start subagents, or delete files. Speak userMessage and wait for /savyre-next.`
-      : `You may write application files with Write/StrReplace for one independently executable backlog item only. Also write \`${reportRel}\` for that id only. Then stop. Do not run Shell, start subagents, or delete files. Speak userMessage and wait for /savyre-next.`;
+    writeHint = source.backlogBlocked
+      ? `Backlog items remain, but none can start. ${formatBacklogBlockedMessage(source.remainingBacklogIds, source.stuckBacklog)} Do not write application files and do not lock Build & Review.`
+      : nextId
+      ? `You may write application files with Write/StrReplace for backlog item \`${nextId}\` only. Do not implement any other backlog id this turn. Also write \`${reportRel}\` naming only \`${nextId}\` and that item's changed paths in backticks (and ## Open Questions). For that item, run the tests before the code (red) and again after the code (green) with \`npm test\`, \`node --test\`, or \`pytest\`. Savyre records those runs. Then stop. Do not run any other terminal command, start subagents, or delete files. Speak userMessage and wait for /savyre-next.`
+      : `You may write application files with Write/StrReplace for one independently executable backlog item only. Also write \`${reportRel}\` for that id only. Run that item's tests before the code and again after it with \`npm test\`, \`node --test\`, or \`pytest\`. Then stop. Do not run any other terminal command, start subagents, or delete files. Speak userMessage and wait for /savyre-next.`;
   } else if (isChatDraft) {
     const evidenceHint =
       manifest.stageId === '03-codebase-discovery' || manifest.stageId === 's02-code-discovery'
@@ -2564,7 +2741,11 @@ async function handleHook(input) {
 
   if (event === 'sessionStart') {
     const source = await readChatSource(workspace, manifest.stageId);
-    source.nextBacklogItemId = await readNextBacklogItemId(workspace, manifest.stageId);
+    const backlog = backlogFlags(await readBacklogWork(workspace, manifest.stageId));
+    source.nextBacklogItemId = backlog.nextBacklogItemId;
+    source.remainingBacklogIds = backlog.remainingBacklogIds;
+    source.stuckBacklog = backlog.stuckBacklog;
+    source.backlogBlocked = backlog.backlogBlocked;
     const additional_context = buildSessionContext(manifest, source);
     await writeChatInjectState(workspace, {
       executionId: manifest.executionId,
@@ -2656,6 +2837,8 @@ async function handleHook(input) {
   const command = input.command || input.tool_input?.command || '';
 
   if (event === 'beforeShellExecution' || (event === 'preToolUse' && SHELL_TOOLS.has(name))) {
+    const buildReview =
+      manifest.stageId === 's04-build-review' || manifest.stageId === '06-implementation';
     if (isLifecycleCommand(command)) {
       await appendEvidence(workspace, {
         executionId: manifest.executionId,
@@ -2663,6 +2846,16 @@ async function handleHook(input) {
         decision: 'allow',
         tool: 'Shell',
         reason: 'lifecycle'
+      });
+      return allow();
+    }
+    if (buildReview && isBuildReviewTestCommand(command)) {
+      await appendEvidence(workspace, {
+        executionId: manifest.executionId,
+        hook: event,
+        decision: 'allow',
+        tool: 'Shell',
+        reason: 'tdd_test'
       });
       return allow();
     }
@@ -2675,8 +2868,20 @@ async function handleHook(input) {
     });
     return deny(
       `${stageTitle(manifest.stageId)} does not allow terminal commands.`,
-      'Do not run terminal commands. Use /savyre-stop to leave enforced mode. You cannot approve the stage.'
+      buildReview
+        ? 'You may run the test command for this backlog item (`npm test`, `node --test`, or `pytest`). A failing run is recorded as red and a later passing run as green. Do not run any other terminal command. Use /savyre-stop to leave enforced mode. You cannot approve the stage.'
+        : 'Do not run terminal commands. Use /savyre-stop to leave enforced mode. You cannot approve the stage.'
     );
+  }
+
+  if (event === 'afterShellExecution') {
+    if (
+      (manifest.stageId === 's04-build-review' || manifest.stageId === '06-implementation') &&
+      isBuildReviewTestCommand(command)
+    ) {
+      await recordBuildReviewTestRun(workspace, manifest, input);
+    }
+    return allow();
   }
 
   if (event === 'preToolUse' && SUBAGENT_TOOLS.has(name)) {
@@ -2835,10 +3040,32 @@ async function readJsonIfPresent(file) {
   }
 }
 
-async function readNextBacklogItemId(workspace, stageId) {
+function emptyBacklogWork() {
+  return { nextId: null, remainingIds: [], stuck: [] };
+}
+
+function localBacklogProgress(tasks, applied) {
+  const remainingIds = [];
+  const stuck = [];
+  for (const item of tasks || []) {
+    const id = String(item?.id || '').trim();
+    if (!id || applied.has(id.toUpperCase())) continue;
+    remainingIds.push(id);
+    const waitingOn = (item.dependencies || [])
+      .map((ref) => {
+        const raw = String(ref || '').trim();
+        return (raw.includes('#') ? raw.slice(raw.lastIndexOf('#') + 1) : raw).toUpperCase();
+      })
+      .filter((dep) => dep && !applied.has(dep));
+    if (waitingOn.length) stuck.push({ id, waitingOn });
+  }
+  return { remainingIds, stuck };
+}
+
+async function readBacklogWork(workspace, stageId) {
   const id = String(stageId || '');
-  if (id !== 's04-build-review' && id !== '06-implementation') return null;
-  if (typeof brain?.selectNextImplementableBacklogId !== 'function') return null;
+  if (id !== 's04-build-review' && id !== '06-implementation') return emptyBacklogWork();
+  if (typeof brain?.selectNextImplementableBacklogId !== 'function') return emptyBacklogWork();
   const backlogRaw = await readJsonIfPresent(
     path.join(workspace, 'stages', 's03_implementation_plan', 'implementation_backlog.json')
   );
@@ -2911,11 +3138,31 @@ async function readNextBacklogItemId(workspace, stageId) {
   }
 
   const statusItems = [...applied].map((appliedId) => ({ id: appliedId, state: 'applied' }));
-  const next = brain.selectNextImplementableBacklogId(tasks, statusItems, {
-    changeReportMarkdown,
-    taskFolderAppliedIds
-  });
-  return typeof next === 'string' && next.trim() ? next.trim() : null;
+  const progressOpts = { changeReportMarkdown, taskFolderAppliedIds };
+  const progress =
+    typeof brain.summarizeBacklogProgress === 'function'
+      ? brain.summarizeBacklogProgress(tasks, statusItems, progressOpts)
+      : null;
+  const next = brain.selectNextImplementableBacklogId(tasks, statusItems, progressOpts);
+  const nextId = typeof next === 'string' && next.trim() ? next.trim() : null;
+  const local = localBacklogProgress(tasks, applied);
+  const remainingIds = Array.isArray(progress?.remainingIds) ? progress.remainingIds : local.remainingIds;
+  const stuck = Array.isArray(progress?.stuck) ? progress.stuck : local.stuck;
+  return { nextId, remainingIds, stuck };
+}
+
+async function readNextBacklogItemId(workspace, stageId) {
+  const work = await readBacklogWork(workspace, stageId);
+  return work.nextId;
+}
+
+function backlogFlags(work) {
+  const nextBacklogItemId = work?.nextId || null;
+  const remainingBacklogIds = Array.isArray(work?.remainingIds) ? work.remainingIds : [];
+  const stuckBacklog = Array.isArray(work?.stuck) ? work.stuck : [];
+  const hasRemainingBacklog = remainingBacklogIds.length > 0;
+  const backlogBlocked = hasRemainingBacklog && !nextBacklogItemId;
+  return { nextBacklogItemId, remainingBacklogIds, stuckBacklog, hasRemainingBacklog, backlogBlocked };
 }
 
 function sessionLooksActive(session) {
@@ -3112,8 +3359,9 @@ async function cmdStart(userText) {
   if (bind.ignoredUserText) {
     message = `Bound to ${stageId}. Extra text after /savyre-start was ignored — that is not a new Task Input. Do not write input.md or ask confirm. Work this stage. ${message}`;
   }
-  const nextBacklogItemId = await readNextBacklogItemId(workspace, stageId);
-  const hasRemainingBacklog = Boolean(nextBacklogItemId);
+  const backlog = backlogFlags(await readBacklogWork(workspace, stageId));
+  const nextBacklogItemId = backlog.nextBacklogItemId;
+  const hasRemainingBacklog = backlog.hasRemainingBacklog;
   const lockReady = aiReady && !hasRemainingBacklog;
   const userMessage = chatStartUserMessage({
     stageId,
@@ -3126,7 +3374,9 @@ async function cmdStart(userText) {
     challengeComplete: pass.challengeComplete,
     evidenceReady: pass.evidenceReady,
     intakeSummary,
-    nextBacklogItemId
+    nextBacklogItemId,
+    remainingBacklogIds: backlog.remainingBacklogIds,
+    stuckBacklog: backlog.stuckBacklog
   });
   const verification = isVerificationBeforeCompletionEnabled()
     ? evaluateVerification({
@@ -3857,8 +4107,9 @@ async function readStageReview(workspace, stageId) {
 async function buildInteractiveTurn(workspace, stageId, sessionId, existing) {
   const keepConfirm = isTaskCaptureStage(stageId) && !existing?.developerConfirmed;
   const aiReady = await aiOutputLooksWritten(workspace, stageId);
-  const nextBacklogItemId = await readNextBacklogItemId(workspace, stageId);
-  const hasRemainingBacklog = Boolean(nextBacklogItemId);
+  const backlog = backlogFlags(await readBacklogWork(workspace, stageId));
+  const nextBacklogItemId = backlog.nextBacklogItemId;
+  const hasRemainingBacklog = backlog.hasRemainingBacklog;
   const lockReady =
     stageId === 's04-build-review' || stageId === '06-implementation'
       ? aiReady && !hasRemainingBacklog
@@ -3896,7 +4147,19 @@ async function buildInteractiveTurn(workspace, stageId, sessionId, existing) {
     turn.question = { id: next.id, blocking: true, text: next.question };
     turn.allowedActions = allowedActionsForState('needs_user_input');
   }
-  return { turn, next, checkpoint, pass, nextBacklogItemId, hasRemainingBacklog, aiReady, lockReady };
+  return {
+    turn,
+    next,
+    checkpoint,
+    pass,
+    nextBacklogItemId,
+    hasRemainingBacklog,
+    backlogBlocked: backlog.backlogBlocked,
+    remainingBacklogIds: backlog.remainingBacklogIds,
+    stuckBacklog: backlog.stuckBacklog,
+    aiReady,
+    lockReady
+  };
 }
 
 async function cmdTurn() {
@@ -3907,8 +4170,18 @@ async function cmdTurn() {
   const stageId = match.panelStageId;
   const sessionId = session?.sessionId || 'local';
   const existing = await readOrCreateCheckpoint(workspace, stageId, sessionId);
-  const { turn, next, pass, nextBacklogItemId, hasRemainingBacklog, aiReady, lockReady } =
-    await buildInteractiveTurn(workspace, stageId, sessionId, existing);
+  const {
+    turn,
+    next,
+    pass,
+    nextBacklogItemId,
+    hasRemainingBacklog,
+    backlogBlocked,
+    remainingBacklogIds,
+    stuckBacklog,
+    aiReady,
+    lockReady
+  } = await buildInteractiveTurn(workspace, stageId, sessionId, existing);
   const fields = chatSkillFields(stageId, turn.state, {
     ...pass,
     pendingQuestion: Boolean(next),
@@ -3920,7 +4193,8 @@ async function cmdTurn() {
     hasPendingBlocking: Boolean(next),
     challengeComplete: pass.challengeComplete,
     evidenceReady: pass.evidenceReady,
-    hasRemainingBacklog
+    hasRemainingBacklog,
+    backlogBlocked
   });
   const confirmed = Boolean(existing?.developerConfirmed);
   const locked = existing?.lastGenerateFinalStageId === stageId;
@@ -3945,6 +4219,8 @@ async function cmdTurn() {
         confirmed,
         aiReady: lockReady,
         nextBacklogItemId,
+        remainingBacklogIds,
+        stuckBacklog,
         challengeComplete: pass.challengeComplete,
         evidenceReady: pass.evidenceReady
       });
@@ -3954,6 +4230,8 @@ async function cmdTurn() {
       ? TALK_FROM_ASSIGNED_THEN_CONFIRM
       : awaitingLock
         ? `Run verification-before-completion (turn.activeSkill). If the check passes, ${TALK_FROM_ASSIGNED_THEN_LOCK} Do not run lock, validate, or start the next stage yourself. Savyre unlocks if Validate passes.`
+        : backlogBlocked
+          ? `${formatBacklogBlockedMessage(remainingBacklogIds, stuckBacklog)} Do not lock Build & Review and do not start another backlog item.`
         : nextBacklogItemId
           ? `Implement only backlog item \`${nextBacklogItemId}\` this turn. Write its application files and \`${stageDraftRel(stageId)}\` for that id only, then stop. Speak userMessage. Wait for /savyre-next. Do not lock Build & Review while backlog items remain.`
           : gate.ok
@@ -4338,15 +4616,17 @@ async function cmdGenerateFinal() {
   }
   await ensureLockReadyReview(workspace, stageId);
   const pass = await loadChatPass(workspace, stageId);
-  const nextBacklogItemId = await readNextBacklogItemId(workspace, stageId);
-  const hasRemainingBacklog = Boolean(nextBacklogItemId);
+  const backlog = backlogFlags(await readBacklogWork(workspace, stageId));
+  const nextBacklogItemId = backlog.nextBacklogItemId;
+  const hasRemainingBacklog = backlog.hasRemainingBacklog;
   const gate = chatGenerateFinalBlockers({
     stageId,
     aiReady: aiReady && !hasRemainingBacklog,
     hasPendingBlocking: false,
     challengeComplete: pass.challengeComplete,
     evidenceReady: pass.evidenceReady,
-    hasRemainingBacklog
+    hasRemainingBacklog,
+    backlogBlocked: backlog.backlogBlocked
   });
   if (!gate.ok) {
     return withUserMessage(
@@ -4356,7 +4636,10 @@ async function cmdGenerateFinal() {
         unlocksStage: false,
         stageId,
         ...(nextBacklogItemId ? { nextBacklogItemId } : {}),
-        reason: hasRemainingBacklog
+        ...(hasRemainingBacklog ? { remainingBacklogIds: backlog.remainingBacklogIds, stuckBacklog: backlog.stuckBacklog } : {}),
+        reason: backlog.backlogBlocked
+          ? 'Backlog items remain, but none can start. Do not lock Build & Review.'
+          : hasRemainingBacklog
           ? `Backlog item ${nextBacklogItemId} is still pending. Implement it before locking Build & Review.`
           : `Chat generate-final blocked (${gate.kind}). Follow turn.activeSkill. Wait.`
       },
@@ -4364,6 +4647,8 @@ async function cmdGenerateFinal() {
         stageId,
         aiReady: aiReady && !hasRemainingBacklog,
         nextBacklogItemId,
+        remainingBacklogIds: backlog.remainingBacklogIds,
+        stuckBacklog: backlog.stuckBacklog,
         challengeComplete: pass.challengeComplete,
         evidenceReady: pass.evidenceReady
       })
@@ -4420,16 +4705,31 @@ async function cmdNext() {
   if (isTaskCaptureStage(panelStageId) && !existing?.developerConfirmed) {
     return cmdConfirm();
   }
+  // S04: unfinished tasks stay on this stage, including when a dependency loop means none can start.
+  if (panelStageId === 's04-build-review' || panelStageId === '06-implementation') {
+    const backlog = backlogFlags(await readBacklogWork(workspace, panelStageId));
+    if (backlog.nextBacklogItemId) {
+      return cmdTurn();
+    }
+    if (backlog.backlogBlocked) {
+      return withUserMessage(
+        {
+          ok: false,
+          action: 'next',
+          unlocksStage: false,
+          panelStageId,
+          hasRemainingBacklog: true,
+          remainingBacklogIds: backlog.remainingBacklogIds,
+          stuckBacklog: backlog.stuckBacklog,
+          reason: 'Backlog items remain, but none can start. Do not lock Build & Review.'
+        },
+        formatBacklogBlockedMessage(backlog.remainingBacklogIds, backlog.stuckBacklog)
+      );
+    }
+  }
   const lastGf = await readLastGenerateFinalStageId(workspace);
   if (lastGf === panelStageId) {
     return cmdValidateGate();
-  }
-  // S04: while backlog items remain, continue implementing — do not jump to lock.
-  if (panelStageId === 's04-build-review' || panelStageId === '06-implementation') {
-    const nextBacklogItemId = await readNextBacklogItemId(workspace, panelStageId);
-    if (nextBacklogItemId) {
-      return cmdTurn();
-    }
   }
   return cmdGenerateFinal();
 }

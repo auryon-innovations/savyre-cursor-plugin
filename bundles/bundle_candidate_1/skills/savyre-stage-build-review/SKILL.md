@@ -27,6 +27,10 @@ For each selected item with `tddApplicability: required` (default for checkable 
 
 Exempt items: follow the approved alternative verification plan; still do not invent lock while other backlog ids remain.
 
+## Test-author role
+
+When the selected backlog item is an authorized test gap, `savyre-test-author` may add or update Node (`node --test` or `npm test`) or Python (`pytest`) checks for the named AC ids. It must not run while S05 is the active stage. Other stacks are outside v1. The role proposes nothing on its own: the item id has to already be authorized.
+
 ## Procedure
 
 1. Require approved task scope and an allowed write action before edits. Work **one** independently executable approved S03 backlog item this turn — the id in JSON `nextBacklogItemId` / `userMessage` when present. Do not implement later backlog ids in the same turn. Respect dependencies and action scope; test creation/corrections from S05 are linked authorized implementation items. Do not expand suite/features without approval. Prefer stating the item id and “writing failing test first” when TDD is required. After that item's tests + source + `change_report.md` for **that id only**, run `turn`, then speak `userMessage` exactly. If `userMessage` / JSON still has a `nextBacklogItemId`, the next action is implement that id — **never** say lock Build & Review while backlog items remain. Only when `userMessage` asks to check the report and lock (no next id) may you direct `/savyre-next` to lock.

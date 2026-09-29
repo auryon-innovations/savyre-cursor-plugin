@@ -30,12 +30,16 @@ Node and plain Python unit files may still exist for non-AC helpers, but AC titl
 
 Browser/runtime install (`npx playwright install`) is setup, not a valid RED. RED must be an assertion or locator failure for the intended behavior. The test title includes the AC id.
 
+## Playwright MCP (optional)
+If Cursor/Claude has the **Playwright MCP** server connected (`@playwright/mcp`), you may use it to explore the live UI (navigate, snapshot, click) while authoring. MCP exploration does **not** replace RED/GREEN evidence. Still write a committed `*.spec.ts` / `*.spec.js` and run `npx playwright test` (or the language command) for the S04 task record.
+
 ## Procedure
 1. Read the approved AC text for the named ids. Do not add checks for unapproved criteria.
 2. Ensure the Playwright runner for the chosen flavor is available (add the smallest dependency/config if the repo has none).
-3. Add or update the smallest runnable Playwright check. When the item is TDD-required and production code is not done, write the failing test first (RED) and leave GREEN to the implementer on that same authorized item.
-4. When production code already exists and the gap is missing coverage, write the check and run `npx playwright test`, Playwright Python `pytest`, `mvn test` / `gradle test`, or `dotnet test` as appropriate. Record the command and result on the S04 task record. Do not weaken assertions to force a pass.
-5. Return to S05 for inventory, rerun, and the AC matrix. This role does not mark a stage complete.
+3. Optionally explore the page with Playwright MCP if it is available.
+4. Add or update the smallest runnable Playwright check. When the item is TDD-required and production code is not done, write the failing test first (RED) and leave GREEN to the implementer on that same authorized item.
+5. When production code already exists and the gap is missing coverage, write the check and run `npx playwright test`, Playwright Python `pytest`, `mvn test` / `gradle test`, or `dotnet test` as appropriate. Record the command and result on the S04 task record. Do not weaken assertions to force a pass.
+6. Return to S05 for inventory, rerun, and the AC matrix. This role does not mark a stage complete.
 
 ## Output
 Test paths, AC ids, stack, command, and the observed run result. Do not write S05 `test_plan.json`.

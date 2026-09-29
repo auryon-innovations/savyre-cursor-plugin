@@ -350,13 +350,13 @@ function waitForDeveloperSlash(slash) {
 }
 
 const TALK_FROM_ASSIGNED_THEN_CONFIRM =
-  'From the product prompt (input.md Assigned task or what they typed), write 2-4 short sentences plus a Product / UX / API / Data / Stack list (only headings the prompt supports). Save that same text under ## Assigned task in savyre/stages/01-task-input/input.md (replace leftover or the summarize-placeholder). Keep Official assignment unchanged. Speak that same Assigned task text, then speak userMessage exactly. Do not speak Original Task. Never list Original Task or other ai-output headings in chat. Do not invent features. Do not paste Official assignment, JSON, message, suggestedTask, or hashes. Wait for /savyre-next. Do not write ai-output.md until they continue.';
+  'From the product prompt (Assigned task or what they typed), write 2-4 short sentences plus a Product / UX / API / Data / Stack list (only headings the prompt supports). Seven-stage: save that same text as assignedTask in stages/s01_task_definition/stage_input.json. Legacy: save under ## Assigned task in savyre/stages/01-task-input/input.md (replace leftover or the summarize-placeholder; keep Official assignment unchanged). Speak that same Assigned task text, then speak userMessage exactly. Do not invent a panel task box or Send button. Do not speak Original Task. Never list Original Task or other draft headings in chat. Do not invent features. Do not paste Official assignment, JSON, message, suggestedTask, or hashes. Wait for /savyre-next. Do not write task_brief.md / ai-output.md until they continue.';
 
 const TALK_FROM_ASSIGNED_THEN_LOCK =
   'Write 1-2 short sentences of substance about the draft. Do not name the file path and do not say I wrote / I\'ve written that file. Then speak userMessage exactly - do not invent a Please check / lock line. Do not invent features. Do not paste Official assignment, JSON, message, suggestedTask, hashes, or continuation. Do not list artifactTemplate headings in chat. Do not speak a leftover numbered list. Wait for /savyre-next.';
 
 const TALK_AFTER_CONFIRM_THEN_DRAFT =
-  'Task confirmed. Do not paste JSON. Do not speak leftover product names. Do not speak the canned draft line as the reply. Do not list Original Task headings in chat. Copy input.md Assigned task into Original Task unchanged. Fill the rest of ai-output.md from that same input.md text (no Generate Output placeholder). Then run turn. Then write 1-2 short sentences of substance (no file path, do not say I wrote the draft), then speak the new userMessage exactly.';
+  'Task confirmed. Do not paste JSON. Do not speak leftover product names. Do not speak the canned draft line as the reply. Do not list Original Task headings in chat. Seven-stage: copy assignedTask into task_brief.md Original Task unchanged and fill the rest of the brief from that text. Legacy: copy input.md Assigned task into Original Task unchanged and fill the rest of ai-output.md from that same input.md text (no Generate Output placeholder). Then run turn. Then write 1-2 short sentences of substance (no file path, do not say I wrote the draft), then speak the new userMessage exactly.';
 
 const WORKFLOW_INSTRUCTION_RX = [
   /\bRun stage AI\b/i,
@@ -3345,7 +3345,7 @@ async function cmdStart(userText) {
     message = TALK_FROM_ASSIGNED_THEN_CONFIRM;
   } else if (captureTask && !existing?.developerConfirmed) {
     message =
-      'Stage 01. Capture the assigned task if needed, then wait for /savyre-next. After they continue, write ai-output.md from the Assigned task using artifactTemplate. Do not lock yet.';
+      'Stage 01. If assignedTask is empty, write the product restatement into stages/s01_task_definition/stage_input.json (or ## Assigned task for legacy), speak it, then wait for /savyre-next. Never invent a panel task box. After they continue, write the draft from the Assigned task. Do not lock yet.';
   } else   if (
     captureTask &&
     existing?.developerConfirmed &&
@@ -4415,6 +4415,12 @@ async function cmdAnswer(questionIdOrAnswer, ...rest) {
   );
 }
 
+function extractOriginalTaskFromBrief(briefText) {
+  const raw = String(briefText || '');
+  const m = raw.match(/##\s*Original Task\s*\r?\n+([\s\S]*?)(?=\r?\n##\s|\r?\n#\s|$)/i);
+  return m ? String(m[1] || '').trim() : '';
+}
+
 async function cmdConfirm() {
   const workspace = await findWorkspaceFromHook({ cwd: process.cwd() });
   const session = await readJsonIfPresent(path.join(workspace, '.savyre', 'session.json'));
@@ -4446,16 +4452,30 @@ async function cmdConfirm() {
       current ? chatUserMessage('confirm_not_stage_01') : chatUserMessage('start_panel')
     );
   }
-  const inputFile = await readStageInput(workspace, current);
-  const input = inputFile.text || '';
-  const assigned = extractAssignedTaskPlain(input);
+  let inputFile = await readStageInput(workspace, current);
+  let input = inputFile.text || '';
+  let assigned = extractAssignedTaskPlain(input);
+  if (!assigned && current === 's01-task-definition') {
+    const brief = await readDraftText(workspace, current);
+    const fromBrief = extractOriginalTaskFromBrief(brief);
+    if (fromBrief) {
+      await persistAssignedTaskExact(workspace, fromBrief);
+      inputFile = await readStageInput(workspace, current);
+      input = inputFile.text || '';
+      assigned = extractAssignedTaskPlain(input) || fromBrief;
+    }
+  }
   if (!assigned) {
     return withUserMessage(
       {
         ok: false,
         action: 'confirm',
         unlocksStage: false,
-        reason: current === 's01-task-definition' ? 'No assignedTask in stage_input.json' : 'No Stage 01 input.md'
+        reason: current === 's01-task-definition' ? 'No assignedTask in stage_input.json' : 'No Stage 01 input.md',
+        message:
+          current === 's01-task-definition'
+            ? 'Do not invent a Savyre panel task box or Send button. Chat has no panel capture UI. Write the product restatement (2-4 sentences plus Product / UX / API / Data / Stack) as assignedTask in stages/s01_task_definition/stage_input.json, speak that text, then speak userMessage exactly. Wait for /savyre-next.'
+            : 'Write the restatement under ## Assigned task in input.md, speak it, then speak userMessage exactly. Wait for /savyre-next.'
       },
       chatUserMessage('ask_what_to_build')
     );

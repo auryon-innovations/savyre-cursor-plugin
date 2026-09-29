@@ -12,7 +12,9 @@
   "deniedTools": ["Delete", "Shell", "Task"],
   "allowedPaths": [
     "stages/s01_task_definition/stage_input.json",
-    "stages/s01_task_definition/task_brief.md"
+    "stages/s01_task_definition/task_brief.md",
+    "stages/s01_task_definition/challenge_findings.json",
+    "stages/s01_task_definition/challenge-findings.json"
   ],
   "excludedPaths": [".env", ".env.local", ".env.production", "id_rsa", "id_ed25519", "*.pem", "credentials.json", "secrets.json"],
   "evidenceRequired": true,

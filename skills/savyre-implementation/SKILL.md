@@ -30,7 +30,8 @@ The stage textbook lives in the **Savyre extension**, not in this skill. Fetch c
 - Write application files to disk (Write / StrReplace). Source stays in the repo (`frontend/`, `backend/`, `app/`), never copied into `stages/`.
 - Do not write `task_metadata.json` or `implementation_status.json` — the runtime owns those. Do not create folders named `FR-001` or user-story titles.
 - Change tests only if the approved backlog or plan says so. Do not invent a new test suite.
-- You must not run shell (except the plugin lifecycle CLI), start subagents, delete files, or approve the stage.
+- For TDD-required items: run that item's tests with `npm test`, `node --test`, or `pytest` before the production change (RED) and again after (GREEN). Savyre records those runs. Other shell stays blocked except the plugin lifecycle CLI.
+- Do not start subagents, delete files, or approve the stage.
 - Do not write `ai-output.md` or an implementation tracking report.
 
 ## When the item is done

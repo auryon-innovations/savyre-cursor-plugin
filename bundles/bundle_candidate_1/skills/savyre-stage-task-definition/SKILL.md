@@ -23,15 +23,25 @@ Read `references/invocation-map.md` before selecting a dedicated/shared pass. S0
 - Never recycle AC IDs. Revised wording for the same outcome keeps the ID and gets a new contract version. Removed AC stay as retired history; new outcomes get new IDs.
 - Do not silently add product scope. Human confirmation refers to an exact contract version/hash; editing the contract invalidates that approval for the edited version.
 
+## Chat capture (required before confirm)
+
+Same behavior in Cursor Agent and Claude Code. When managed Chat has this stage enforced:
+
+1. As soon as the developer names the product (chat message or leftover after `/savyre-start`), write a 2–4 sentence restatement plus Product / UX / API / Data / Stack (only supported headings) as `assignedTask` in `stages/s01_task_definition/stage_input.json`.
+2. Speak that same restatement, then speak JSON `userMessage` exactly. Wait for `/savyre-next` to confirm. Do **not** write `task_brief.md` before confirm.
+3. After confirm, write `task_brief.md`, run `turn`. When `turn.activeSkill` becomes `savyre.requirement-challenge`, **in the same agent turn** write `stages/s01_task_definition/challenge_findings.json` (`schemaVersion` `"1.0"`, `findings` array — empty OK), run `turn` again, then speak `userMessage` exactly (AC approve + `/savyre-next` to lock).
+4. Never invent a Savyre panel task box, Send button, or panel Validate step. Chat has no panel capture UI.
+5. `/savyre-next` confirms only when `assignedTask` is non-empty. A filled `task_brief.md` alone is not enough. Lock also needs `challenge_findings.json` on disk.
+
 ## Procedure
 
-1. Capture exact designated original task separately from a helpful restatement; distinguish product requirements from workflow instructions.
+1. Capture exact designated original task separately from a helpful restatement; distinguish product requirements from workflow instructions. In Chat, that capture is the `assignedTask` write above.
 2. Extract supported requirements and observable criteria; include user stories only when actor/value helps feature work. Link story/criterion to requirement/source; technical fixes need no forced story.
 3. Challenge for contradictions, inferred features, vague acceptance or unaccepted assumptions. Ask one material blocking question at a time with stable runtime IDs; reuse resolved decisions. Do not ask routine questions unrelated to the task.
 4. Revise analyzed brief after answers, then request one final confirmation of the current complete contract. **Call out Acceptance Criteria by ID** and ask the developer to approve that exact AC set before lock. Reopened scope creates a new draft/revision.
 
 ## Output contract
-Produce a concise response with outcome, material question/blocker if any and the verified next action. Detailed content belongs in the assigned draft `task_brief.md` or returned preview content when no writer is delegated.
+Produce a concise response with outcome, material question/blocker if any and the verified next action. Detailed content belongs in the assigned draft `task_brief.md` or returned preview content when no writer is delegated. In Chat, capture `assignedTask` first; the brief comes after confirm.
 
 Draft sections: **Original Task; Understanding; Requirements; User Stories (if applicable); Acceptance Criteria; Constraints and Exclusions; Proposed/Accepted Assumptions; Decisions and Open Questions; Confirmation Needed**. Omit irrelevant optional detail rather than fill generic sections with invented facts. Structured supporting artifacts: **task_contract.json**.
 

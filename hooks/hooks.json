@@ -21,6 +21,11 @@
         "command": "node ./hooks/savyre-guard.mjs"
       }
     ],
+    "afterShellExecution": [
+      {
+        "command": "node ./hooks/savyre-guard.mjs"
+      }
+    ],
     "sessionStart": [
       {
         "command": "node ./hooks/savyre-guard.mjs"

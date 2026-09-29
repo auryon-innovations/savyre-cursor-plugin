@@ -23,13 +23,13 @@ Read `references/invocation-map.md` before selecting a dedicated/shared pass. S0
 - Historical failures remain visible after successful reruns; current applicable results determine readiness.
 - **S05 does not create or edit executable tests, test config, or app source.** Propose missing/updated checks; execute approved edits only through an authorized **S04** rework item, then rerun here.
 
-## Flows (Node and Python)
+## Flows (Playwright default)
 
-**Flow A — tests already exist.** Inventory files and commands. Map every active AC. Run the project's Node command (`npm test` or `node --test`) or Python command (`pytest`). Do not rewrite the suite when those checks already cover the active AC.
+**Flow A — Playwright (or other) checks already exist.** Inventory files and commands. Map every active AC. Prefer running Playwright: `npx playwright test`, Playwright Python `pytest`, `mvn test` / `gradle test`, or `dotnet test`. Do not rewrite the suite when those checks already cover the active AC.
 
-**Flow B — tests missing or incomplete.** Mark the AC `unverified`. Record a gap (AC id, suggested command, stack). Propose an S04 item for `savyre-test-author`. Do not create test files here. After that item is approved and tests exist, rerun and update the matrix.
+**Flow B — tests missing or incomplete.** Mark the AC `unverified`. Record a gap whose **default stack is Playwright** (JS/TS unless another Playwright language is already present) and suggested command `npx playwright test` (or that language's command). Propose an S04 item for `savyre-test-author`. Do not create test files here. After that item is approved and Playwright checks exist, rerun and update the matrix.
 
-v1 stacks are Node and Python. Detection order: declared script, then manifest (`package.json`, `pyproject.toml`), then conventions (`*.test.*`, `test_*.py`, `*_test.py`). If no runner exists, record a manual procedure. That is not a pass.
+AC gaps must not default to Node-only or manual when Playwright can be scaffolded in S04. Detection still lists Node/Python unit runners, but AC coverage proposals use the Playwright default.
 
 Chat copy follows the same split: inventory says list and run existing checks; a gap says the AC stays unverified and the next write is an authorized S04 test-author item. Continue with `/savyre-next`. Chat does not finish the stage by itself.
 

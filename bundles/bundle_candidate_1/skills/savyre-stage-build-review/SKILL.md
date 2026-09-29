@@ -29,7 +29,7 @@ Exempt items: follow the approved alternative verification plan; still do not in
 
 ## Test-author role
 
-When the selected backlog item is an authorized test gap, `savyre-test-author` may add or update Node (`node --test` or `npm test`) or Python (`pytest`) checks for the named AC ids. It must not run while S05 is the active stage. Other stacks are outside v1. The role proposes nothing on its own: the item id has to already be authorized.
+When the selected backlog item is an authorized test gap or a required AC check, `savyre-test-author` **defaults to Playwright** (JS/TS `npx playwright test`, or Playwright Python/Java/C# when that language is already present). Scaffold Playwright if the repo has no runner. Do not default AC checks to `node --test`. It must not run while S05 is the active stage. The role proposes nothing on its own: the item id has to already be authorized.
 
 ## Procedure
 

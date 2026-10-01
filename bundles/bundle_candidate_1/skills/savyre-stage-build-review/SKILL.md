@@ -29,7 +29,7 @@ Exempt items: follow the approved alternative verification plan; still do not in
 
 ## Test-author role
 
-When the selected backlog item is an authorized test gap or a required AC check, `savyre-test-author` **defaults to Playwright** (JS/TS `npx playwright test`, or Playwright Python/Java/C# when that language is already present). Scaffold Playwright if the repo has no runner. Do not default AC checks to `node --test`. It must not run while S05 is the active stage. The role proposes nothing on its own: the item id has to already be authorized.
+When the selected backlog item is an authorized test gap or a required AC check, `savyre-test-author` **defaults to Playwright** (JS/TS `npx playwright test`, or Playwright Python/Java/C# when that language is already present). Scaffold Playwright if the repo has no runner. Do not default AC checks to `node --test`. When Playwright MCP tools are already connected, snapshot the page before the spec. That is not an extra tool install. Snapshots are not RED/GREEN. If those tools are not connected, write the spec anyway. It must not run while S05 is the active stage. The role proposes nothing on its own: the item id has to already be authorized.
 
 ## Procedure
 

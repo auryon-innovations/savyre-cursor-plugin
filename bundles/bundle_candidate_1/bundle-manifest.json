@@ -183,7 +183,7 @@
       "files": [
         {
           "path": "skills/savyre-stage-build-review/SKILL.md",
-          "sha256": "1ccfc2e68044568e4f7a8288826df8724bee2f30c11a6f949c6d44c047eb4043"
+          "sha256": "193472d614153292713d8b971d72557810113a242c2468fe02384d433662ed4b"
         },
         {
           "path": "skills/savyre-stage-build-review/references/invocation-map.md",
@@ -316,7 +316,7 @@
       "files": [
         {
           "path": "skills/savyre-test-author/SKILL.md",
-          "sha256": "c85ea312c42281a4bd01b72140e717b1584df70e5f2b7af8835206fdf98d075d"
+          "sha256": "0ce0617938817da5c5a3f3555d6dc93760f83af92118894105e4b005c42aaa0a"
         },
         {
           "path": "skills/savyre-test-author/references/invocation-map.md",
@@ -324,7 +324,7 @@
         },
         {
           "path": "skills/savyre-test-author/references/runtime-boundary.md",
-          "sha256": "4827681323c0e5b07f2e06286ee85640a31cf842b1e0e7f3110e6429685a8eab"
+          "sha256": "4b752e321a85300af9a2a3fc833b6304af93f5ae48aee2358baa0ca64f32dba2"
         }
       ]
     },

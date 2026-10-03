@@ -7,11 +7,11 @@ Read when routing a stage or selecting a reusable pass. This is a candidate call
 |---|---|---|---|
 | S01 | savyre-stage-task-definition | savyre-requirement-challenge | After analyzed draft, before task confirmation |
 | S02 | savyre-stage-code-discovery | savyre-evidence-grounding | After discovery, before grounded impact/finalization |
-| S03 | savyre-stage-implementation-plan | none mandatory | Existing backlog validation is runtime logic |
-| S04 | savyre-stage-build-review | none mandatory | Separate read-only review; disclose self-review if no independent reviewer |
-| S05 | savyre-stage-test-resolve | none mandatory | Strategy/diagnosis read-only; write/correction action dispatched to S04 |
-| S06 | savyre-stage-delivery-readiness | none mandatory | Actual readiness policy is runtime logic |
-| S07 | savyre-stage-handoff | none mandatory | Export is supported runtime action |
+| S03 | savyre-stage-implementation-plan | none mandatory | Existing backlog validation is runtime logic; note UI scope for later `savyre-ui-ux-quality` |
+| S04 | savyre-stage-build-review | savyre-ui-ux-quality (conditional) | Explicit build mode before affected UI implementation; distinct review mode against current UI changes |
+| S05 | savyre-stage-test-resolve | none mandatory | Strategy/diagnosis read-only; write/correction action dispatched to S04; consume UI/UX findings with tests |
+| S06 | savyre-stage-delivery-readiness | none mandatory | Actual readiness policy is runtime logic; require current UI/UX `passed` or justified `not_applicable` |
+| S07 | savyre-stage-handoff | none mandatory | Export is supported runtime action; carry UI/UX outcomes and limitations |
 
 ## Cross-stage reusable consumers
 - savyre-run-stage: entry dispatcher; check stage/session/bundle before primary. Primary and subpasses do not recursively call router.
@@ -22,10 +22,11 @@ Read when routing a stage or selecting a reusable pass. This is a candidate call
 - savyre-verification-before-completion: after required internal passes, before recommending finalization or transition; only check current checkpoint evidence, not software correctness by appearance.
 - savyre-response-composer: last presentation step, using already-produced stage facts and verified next action; does not overwrite intake/review/state.
 - savyre-test-author: only on an authorized S04 backlog item for Playwright by default (JS/TS, Python, Java, C#); AC gaps must not default to node --test. It writes AC-linked checks. S05 inventories and runs; it does not load this role to create files.
+- savyre-ui-ux-quality: only when runtime explicitly assigns it under S04 (or preview). Use `mode=build` before affected UI implementation and `mode=review` on a distinct read-only pass against current source/preview bindings. Review completes `CHK-BROWSER-PREVIEW` with Playwright MCP snapshot or an authorized preview URL — not AC RED/GREEN. Backend-only work may skip with recorded `not_applicable`. Does not replace S04, approve stages, or authorize deployment. Missing browser verification is `unable_to_verify`, never `passed`.
 
 Order is conditional, not an instruction to load every reusable consumer on every turn. Runtime guards and user responses can pause/reopen work at any step. S01 challenger returning blockers preserves stable question IDs; S02 grounder returning gaps prevents unqualified impact assertions. Verification fails or unknown remains blocked/unassessed, not approval.
 
 ## Availability and preview
 In managed mode if runtime assigns a dedicated subpass, check the assigned package/version exists and is allowed. If absent/incompatible stop that subpass with diagnostic or ask runtime for an explicit approved fallback; never claim it ran. Existing primary skills may perform their defined internal analysis only when runtime delegates that fallback. In standalone preview use available packaged dedicated skills by name to analyze supplied evidence and label draft outputs unbound. Do not claim runtime invocation occurred.
 
-Each subpass returns findings/evidence/limitations to its primary and runtime; it does not take over artifact ownership. No dynamic fallback from one stage to another or legacy-number mapping is assumed. Test creation/fixes in S05 are requests for an authorized S04 action, using savyre-test-author when the stack is Playwright (default) or an authorized Node/Python exception; after changed source, runtime invalidates and refreshes relevant reviews/runs.
+Each subpass returns findings/evidence/limitations to its primary and runtime; it does not take over artifact ownership. No dynamic fallback from one stage to another or legacy-number mapping is assumed. Test creation/fixes in S05 are requests for an authorized S04 action, using savyre-test-author when the stack is Playwright (default) or an authorized Node/Python exception; after changed source, runtime invalidates and refreshes relevant reviews/runs including UI/UX review evidence.

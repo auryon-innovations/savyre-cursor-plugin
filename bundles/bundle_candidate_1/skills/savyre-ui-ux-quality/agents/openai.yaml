@@ -1,0 +1,6 @@
+interface:
+  display_name: "Savyre UI/UX Quality"
+  short_description: "Build and review usable, consistent web interfaces"
+  default_prompt: "Use $savyre-ui-ux-quality to build or review the affected web experience with rendered evidence."
+policy:
+  allow_implicit_invocation: true

@@ -42,7 +42,7 @@ Chat copy follows the same split: inventory says list and run existing checks; a
 5. Diagnose real failure with supporting/falsifying evidence and bounded hypotheses; keep probable versus confirmed cause. Propose smallest scope correction and rerun targets. Route authorized correction to S04, refresh affected reviews/runs; do not delete tests for a pass.
 
 ## Production-level quality
-Every **critical AC** needs **runnable** evidence (unit/API and/or e2e). Do not treat prose-only coverage as Validate-ready. Record what ran, result, and AC linkage; list unresolved failures as known gaps with AC IDs.
+Every **critical AC** needs **runnable** evidence (unit/API and/or e2e). Do not treat prose-only coverage as Validate-ready. Record what ran, result, and AC linkage; list unresolved failures as known gaps with AC IDs. Consume current `savyre-ui-ux-quality` findings alongside tests; route UI source corrections through authorized S04 rework and require targeted UI/UX re-review after affected changes.
 
 ## Output contract
 Produce a concise response with outcome, material question/blocker if any and the verified next action. Detailed content belongs in the assigned draft `verification_report.md` or returned preview content when no writer is delegated.

@@ -32,6 +32,9 @@ Read `references/invocation-map.md` before selecting a dedicated/shared pass. S0
 3. Describe verification approach, relevant risks and rollback where applicable. Detailed case strategy belongs to S05. Do not include source implementation or claim test files were generated.
 4. Check narrative/backlog agreement and full active-AC coverage; request explicit approval of the exact plan/backlog revision before implementation. Missing optional docs are labeled; verified authoritative method delivery can replace absent MCP.
 
+## Production-level quality
+Prefer **small vertical slices** tied to AC/NFRs. Every item needs a **done check**. Order critical user journeys and auth/data integrity before polish. No mega “build everything” item. Do not invent scope beyond the approved S01 contract. **UI:** match existing theme when present; greenfield slices use the default polished UI bar (or user colors/reference). Optional late **UI polish pass** item only — no early design-only stage. No web scraping of competitor UIs.
+
 ## Output contract
 Produce a concise response with outcome, material question/blocker if any and the verified next action. Detailed content belongs in the assigned draft `implementation_plan.md` or returned preview content when no writer is delegated.
 

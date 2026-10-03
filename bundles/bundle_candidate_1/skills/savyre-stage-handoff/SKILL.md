@@ -21,6 +21,9 @@ Read `references/invocation-map.md` before selecting a dedicated/shared pass. S0
 3. Draft delivery_summary.md and proposed handoff_manifest.json referencing selected artifact/revisions/relative package paths, omissions and limitations. Runtime finalizes summary before ZIP export; no final/ZIP circular dependency.
 4. Use existing authorized exporter only when available; relative paths/assets work offline, no author-machine URLs. If exporter absent return manifest/content plan and unavailable status, not a fictional ZIP. Local package creation is not authority to email/upload/publish/deploy/merge.
 
+## Production-level quality
+Summarize what meets AC/NFRs vs what does not. List residual risks and known gaps honestly. Include how to **verify locally** for critical journeys. Do not invent deploy/ops completion.
+
 ## Output contract
 Produce a concise response with outcome, material question/blocker if any and the verified next action. Detailed content belongs in the assigned draft `delivery_summary.md` or returned preview content when no writer is delegated.
 

@@ -16,10 +16,14 @@ Read `references/invocation-map.md` before selecting a dedicated/shared pass. S0
 
 ## Procedure
 
+0. **Empty / greenfield skip:** If the workspace has no application product source (only Savyre/scaffold files) or runtime already set `skipCodeDiscovery`, do **not** invent a codebase. Write a short skipped report stating no application code was found, speak JSON `userMessage` for `skip_code_discovery` exactly (“No application code found… Stage 2 is skipped”), then wait for `/savyre-next` toward Implementation Plan.
 1. Read task-relevant existing index/source, refresh changed references through permitted retrieval and explain relevance. Optional structural search only for tested supported languages; text/file fallback remains useful.
 2. Ground observed files/symbols/relationships with current evidence. Explicitly record scan boundaries/truncation; no application code means greenfield, not fictional stack. Separate docs, observation and inference.
 3. Assess grounded affected surfaces, consequence, confidence and required checks; no database/auth impacts merely to fill a template. Do not turn impact into code or implementation plan.
 4. Use optional existing Mermaid only for evidenced useful structure; diagrams/relationship tables share evidence and inference labels. Ask only material missing scope/access/contradictions; scope changes reopen S01 through runtime.
+
+## Production-level quality
+Map real repo constraints (patterns, auth/data, tests). Explicitly separate **reuse vs greenfield**. Call out real-user risks (authz, validation, error handling). No fictional stack. Document any **existing UI theme** to reuse; if none, note greenfield visuals for later stages.
 
 ## Output contract
 Produce a concise response with outcome, material question/blocker if any and the verified next action. Detailed content belongs in the assigned draft `codebase_impact_report.md` or returned preview content when no writer is delegated.

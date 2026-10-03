@@ -183,7 +183,7 @@
       "files": [
         {
           "path": "skills/savyre-stage-build-review/SKILL.md",
-          "sha256": "c643539a085a76e9d79cfa5a355c53bef581558e47b82f9b369cdaa2971f8684"
+          "sha256": "b2ecb393c0226d603e979a30229578706f6f8463e2bcd1c95a44d6ba8f51862b"
         },
         {
           "path": "skills/savyre-stage-build-review/references/invocation-map.md",
@@ -202,7 +202,7 @@
       "files": [
         {
           "path": "skills/savyre-stage-code-discovery/SKILL.md",
-          "sha256": "dbce3831bffbe828ab15911f5e03773884fcb6ea69dcb833c2be4101a99232fb"
+          "sha256": "2541df2f74fffd4af627cbabbbb767a67d6272d430b804f157b089e23e2250ce"
         },
         {
           "path": "skills/savyre-stage-code-discovery/references/invocation-map.md",
@@ -221,7 +221,7 @@
       "files": [
         {
           "path": "skills/savyre-stage-delivery-readiness/SKILL.md",
-          "sha256": "6954017f279c8b4ac38b7f6c0d2f4dbe5d6796666dd53f0ac49a0f1ccba44a33"
+          "sha256": "d982c2d5c7590f2940d8d1b8f9928b1d6823d4b9d00e295b56b3cd60e3e1cc22"
         },
         {
           "path": "skills/savyre-stage-delivery-readiness/references/invocation-map.md",
@@ -240,7 +240,7 @@
       "files": [
         {
           "path": "skills/savyre-stage-handoff/SKILL.md",
-          "sha256": "319a58ba57e495c54390d47183bb29434292a6177c00876401da81d52ba29fd8"
+          "sha256": "0f6676fa2ec7fc45e33126e72a902a86b73e2b1768c7b4d3c9e22a951763456e"
         },
         {
           "path": "skills/savyre-stage-handoff/references/invocation-map.md",
@@ -259,7 +259,7 @@
       "files": [
         {
           "path": "skills/savyre-stage-implementation-plan/SKILL.md",
-          "sha256": "f4b713174bd4b3b552add1b81f60b0eced447732fbdd96b775c3d8d0acbe2fa8"
+          "sha256": "55c74afb8ffe95d6cf7ff4566276fe71ed826f83a387c06ea0b4e5a67a251846"
         },
         {
           "path": "skills/savyre-stage-implementation-plan/references/invocation-map.md",
@@ -278,7 +278,7 @@
       "files": [
         {
           "path": "skills/savyre-stage-task-definition/SKILL.md",
-          "sha256": "9e4f9c71a483711ce7c22f85bc997e31ace6f540fa638eed72c73580d0e6f5f2"
+          "sha256": "fbb260460c7b7ded65c9d724f3f718caf25718c9d61212f392db779fa741dfd7"
         },
         {
           "path": "skills/savyre-stage-task-definition/references/invocation-map.md",
@@ -286,7 +286,7 @@
         },
         {
           "path": "skills/savyre-stage-task-definition/references/runtime-boundary.md",
-          "sha256": "132cba8f886f5e7157a2a9e26c91a705dc74f2fa7a19b15f308eaf5f045ab71c"
+          "sha256": "8613473cf74139e633400bedd6a7c8d396dff1cf47bd5da70525402b281ee42f"
         }
       ]
     },
@@ -297,7 +297,7 @@
       "files": [
         {
           "path": "skills/savyre-stage-test-resolve/SKILL.md",
-          "sha256": "4be79003e27c434686fe9dace7f7a6f10572033c7a2330d97028c83ba3092c4d"
+          "sha256": "245f70aefec7811fe8b57b3e2b8898ab6a24b833f29fb9a836404823f0bfb948"
         },
         {
           "path": "skills/savyre-stage-test-resolve/references/invocation-map.md",

@@ -39,6 +39,9 @@ When the selected backlog item is an authorized test gap or a required AC check,
 4. Review current changes in a distinct read-only pass, optionally using a compatible assigned reviewer. Produce precise trigger/consequence/evidence/location findings, merge duplicates and allow zero findings. Declare self-review limits when no independent reviewer; never present it as independent.
 5. Proposed fixes need permitted implementation/rework action; material deviation reopens S03/S01. Invalidate impacted source/review/run bindings through runtime.
 
+## Production-level quality
+Implement **only** approved backlog/AC. Match repo conventions; avoid unnecessary deps. Cover real-user paths (validation, authz, errors, empty/loading states) — not happy-path-only demos. **UI:** reuse existing theme when present; otherwise apply default polished UI bar / user reference. Do not browse the web to clone competitor UIs.
+
 ## Output contract
 Produce a concise response with outcome, material question/blocker if any and the verified next action. Detailed content belongs in the assigned draft `change_report.md` or returned preview content when no writer is delegated.
 

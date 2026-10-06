@@ -33,7 +33,7 @@ When the selected backlog item is an authorized test gap or a required AC check,
 
 ## UI/UX quality role
 
-When the authorized item or actual changes affect user-facing UI/UX (screens, navigation, validation feedback, accessibility, or an explicit UI/mockup request), explicitly invoke `savyre-ui-ux-quality` with `mode=build` before/during implementation and a distinct `mode=review` pass against the current source/preview binding. Backend-only work may skip with recorded `not_applicable`. This role does not replace S04 ownership, approve the stage, or clear Validate. Missing required browser verification is `unable_to_verify`, never `passed`.
+When the authorized item or actual changes affect user-facing UI/UX (screens, navigation, validation feedback, accessibility, or an explicit UI/mockup request), explicitly invoke `savyre-ui-ux-quality` with `mode=build` before/during implementation and a distinct `mode=review` pass against the current source/preview binding. Review must attach Playwright MCP or authorized preview evidence to `CHK-BROWSER-PREVIEW`; AC RED/GREEN alone does not satisfy it. Backend-only work may skip with recorded `not_applicable`. This role does not replace S04 ownership, approve the stage, or clear Validate. Missing required browser verification is `unable_to_verify`, never `passed`.
 
 ## Procedure
 

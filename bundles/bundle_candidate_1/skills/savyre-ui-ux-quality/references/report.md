@@ -8,7 +8,7 @@ Required fields:
 - `applicability`: required boolean, reason, decision evidence from brief/plan/diff.
 - `scope`: screens, journeys, requirements, viewport targets and exclusions.
 - `mockup`: treatment (none/direct_preview/single_screen/clickable_journey), reason, initial count, refinement count, budget and any user-authorized override.
-- `checks`: ID, criterion, required boolean, status (completed/failed/unavailable/not_applicable), evidence references, explanation.
+- `checks`: ID, criterion, required boolean, status (completed/failed/unavailable/not_applicable), evidence references, explanation. Review mode must include `CHK-BROWSER-PREVIEW` (required). Complete it only with Playwright MCP / live preview evidence — never with AC RED/GREEN alone.
 - `findings`: ID, severity (critical/major/minor), affected area, expected/observed behavior, reproduction, impact, correction criteria, evidence, resolution (open/resolved) and verified revision.
 - `evidence`: references to actual runtime-owned screenshots, test logs or interaction records, with source binding. Do not fabricate paths.
 - `review`: outcome (pending/passed/fixes_required/unable_to_verify/not_applicable), reviewer type (self/independent), correction count, limitations. Build records use pending when review has not run; pending cannot satisfy a gate.

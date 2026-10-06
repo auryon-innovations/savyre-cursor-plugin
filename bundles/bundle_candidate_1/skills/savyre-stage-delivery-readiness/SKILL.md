@@ -21,6 +21,9 @@ Read `references/invocation-map.md` before selecting a dedicated/shared pass. S0
 3. Reconcile unresolved deviations/review findings/risk acceptance and stale evidence. Final score/reviewer recommendation is not software acceptance. Ask only actual missing manual evidence or permitted residual-risk decisions.
 4. Request final developer acceptance according to runtime policy, never stamp it yourself. Optional Git status is observed only when real capability exists; PR/merge/deploy is a distinct supported explicitly authorized action outside this assessment.
 
+## Production-level quality (app only — no deploy/ops)
+Assess security (authz, secrets, input), accessibility basics, basic perf of primary flows, privacy of data handling, **UI theme match or polished bar**, and **known gaps**. Do not require deployment, monitoring, backups, or incident runbooks. One mandatory failed/unverified critical check prevents “ready.” Current `savyre-ui-ux-quality` outcome must be `passed` or justified `not_applicable`; `pending`, `fixes_required`, `unable_to_verify`, unknown, or stale evidence do not satisfy readiness.
+
 ## Output contract
 Produce a concise response with outcome, material question/blocker if any and the verified next action. Detailed content belongs in the assigned draft `delivery_readiness_report.md` or returned preview content when no writer is delegated.
 

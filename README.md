@@ -41,6 +41,18 @@ savyre-cursor-plugin/
 
 Skills are **short role instructions**. Stage textbooks stay in the extension (`prompts/stages/*.md`). Do not copy those prompts into this plugin.
 
+## Candidate bundle source of truth
+
+`bundles/bundle_candidate_1` is published **from** `savyre-ai-eng-org/packages/savyre-run-config` (org → this plugin only).
+
+```powershell
+cd ..\savyre-ai-eng-org\packages\savyre-run-config
+npm run publish:bundle
+# or: node scripts/install-candidate-bundle.mjs   (still org → plugin)
+```
+
+Do **not** copy this plugin’s `bundles/` back into the org repo.
+
 ## Install locally (copy, do not junction, do not Add-from-local)
 
 ```powershell

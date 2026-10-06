@@ -12,7 +12,15 @@ Inputs: Runtime intervention decision, stable pending/suppressed question IDs, c
 
 ## Procedure
 
-1. If runtime ask=true present only the assigned material question, using its stable ID; combine explanation only if it clarifies the question without adding scope.
+1. If runtime ask=true and `askQuestion` is set, present only the assigned material question. **Next tool call must be Cursor `AskQuestion`**. If `forbidAskQuestion` is true or the OQ is in `resolvedOpenQuestionIds`, do **not** ask again. Option ids `1`/`2`/`3`, product-specific labels. Do not dump Options when the picker ran. After they click, run `/savyre-answer <OQ-id> 1` (or 2/3). If `AskQuestion` is unavailable, speak a **multiline** Options block:
+   ```
+   <question>?
+   Options:
+   1) …
+   2) …
+   3) …
+   ```
+   Never put `1) 2) 3)` on one line. Options must be concrete product alternatives — **not** bare Yes/No. After they pick, record `/savyre-answer`.
 2. If ask=false do not invent a new question, but do not convert unasked stack/layout/behavior choices into confirmed requirements or accepted assumptions. An actual material conflict is reported to runtime for reconsideration, not silently suppressed.
 3. Preserve suppressed/resolved question records; a missing question ID/content or inconsistent decision produces a diagnostic/question proposal to runtime.
 4. Return human clarification/limitation, not an accepted decision. Runtime records developer answer and impact on artifacts.

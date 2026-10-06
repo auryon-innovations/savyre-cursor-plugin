@@ -70,7 +70,7 @@
       "files": [
         {
           "path": "skills/savyre-evidence-grounding/SKILL.md",
-          "sha256": "a7a505089d51e471df0cf20d9d3b8e9c6c05a8d9472bf3c49368e3d458b049e8"
+          "sha256": "f9c68916dbf7853aab563485274434a426475c4b6375a0f36b68460ff3267d39"
         },
         {
           "path": "skills/savyre-evidence-grounding/references/invocation-map.md",
@@ -78,7 +78,7 @@
         },
         {
           "path": "skills/savyre-evidence-grounding/references/runtime-boundary.md",
-          "sha256": "14aa5de42c887a67100c77e0d7e717bc70776d5688b51098bc115c6e41f0c6f6"
+          "sha256": "03d3e83dba512830e132cbf3033c7cf74849fce92287f543d7413af582a587a4"
         }
       ]
     },
@@ -127,7 +127,7 @@
       "files": [
         {
           "path": "skills/savyre-requirement-challenge/SKILL.md",
-          "sha256": "1be4d2b0fbf95db9df9e7da1093224054ccc251d6a36c78f612769f64a1a2b1c"
+          "sha256": "c1a52fc59cd7ca2427c01d9cc83404b9cb93d989e45e9bb9c3476cc47527acdf"
         },
         {
           "path": "skills/savyre-requirement-challenge/references/invocation-map.md",
@@ -135,7 +135,7 @@
         },
         {
           "path": "skills/savyre-requirement-challenge/references/runtime-boundary.md",
-          "sha256": "15c64e5eb20e450dce92001fcce8ca89c7b6ff19c574b3601f65720d92e8429c"
+          "sha256": "8264edfe6340fb4dda3dff33838c71b6d1b4ddd1a31aefc3a170186028d272f4"
         }
       ]
     },
@@ -184,7 +184,7 @@
       "files": [
         {
           "path": "skills/savyre-stage-build-review/SKILL.md",
-          "sha256": "f03861d5f4aafefc49b6c4632ea8f3f12343c3ed1d6562efed23538f113fdba7"
+          "sha256": "46d6c7dd9a2b3a879fe30e1ec65eccdb33107daa0a6786d30bc18678da70d69d"
         },
         {
           "path": "skills/savyre-stage-build-review/references/invocation-map.md",
@@ -203,7 +203,7 @@
       "files": [
         {
           "path": "skills/savyre-stage-code-discovery/SKILL.md",
-          "sha256": "8ccc3de6cf09449de4712a41a7c2d2d68333dcef758cd14d1943754161a6444f"
+          "sha256": "2541df2f74fffd4af627cbabbbb767a67d6272d430b804f157b089e23e2250ce"
         },
         {
           "path": "skills/savyre-stage-code-discovery/references/invocation-map.md",
@@ -222,7 +222,7 @@
       "files": [
         {
           "path": "skills/savyre-stage-delivery-readiness/SKILL.md",
-          "sha256": "6565f1f1968ed9c82d95e7a3886fea0cbffde0d01ced3b4b494a54cf216bdfb9"
+          "sha256": "97e441c3a35ed76ded3ca555959a101c0520e1b87be70b4f94ee01efda7655a2"
         },
         {
           "path": "skills/savyre-stage-delivery-readiness/references/invocation-map.md",
@@ -241,7 +241,7 @@
       "files": [
         {
           "path": "skills/savyre-stage-handoff/SKILL.md",
-          "sha256": "6ff44924731b6d9af016d5ad7620a7d88ffdac96185059f265be68e84c7008f7"
+          "sha256": "0f6676fa2ec7fc45e33126e72a902a86b73e2b1768c7b4d3c9e22a951763456e"
         },
         {
           "path": "skills/savyre-stage-handoff/references/invocation-map.md",
@@ -260,7 +260,7 @@
       "files": [
         {
           "path": "skills/savyre-stage-implementation-plan/SKILL.md",
-          "sha256": "b9466be031cdf686a85ff85a9ea9b12ab90992530f863602355003217bb91422"
+          "sha256": "65121e25ae64a3e56c0efb4674d5930644d01707e4b1dac9c945ebf1f3130a0d"
         },
         {
           "path": "skills/savyre-stage-implementation-plan/references/invocation-map.md",
@@ -279,7 +279,7 @@
       "files": [
         {
           "path": "skills/savyre-stage-task-definition/SKILL.md",
-          "sha256": "cb6461f791aed9fad5eb187d106deffa7a5212b4d66e70a703e78e4517204911"
+          "sha256": "182fd09521e69b0a18b9b0b35ac8b50d4a212119fafac8ef044df787e89947e5"
         },
         {
           "path": "skills/savyre-stage-task-definition/references/invocation-map.md",
@@ -287,7 +287,7 @@
         },
         {
           "path": "skills/savyre-stage-task-definition/references/runtime-boundary.md",
-          "sha256": "8930dd92648ee00947a5be2b88a642de3c5512a310550d3c5c1f6fc8bfff9366"
+          "sha256": "8613473cf74139e633400bedd6a7c8d396dff1cf47bd5da70525402b281ee42f"
         }
       ]
     },
@@ -298,7 +298,7 @@
       "files": [
         {
           "path": "skills/savyre-stage-test-resolve/SKILL.md",
-          "sha256": "017491fcf2570540e5664a5cbb38474ee60f2d014677a44831c1826d508d97d0"
+          "sha256": "5a467d505269ac18081538d34b19cefcad06a7ccbb1cb92498f1ea56b5d45c68"
         },
         {
           "path": "skills/savyre-stage-test-resolve/references/invocation-map.md",
@@ -317,7 +317,7 @@
       "files": [
         {
           "path": "skills/savyre-test-author/SKILL.md",
-          "sha256": "7eb2933da638ba7eb20774814d399c8240b8127e9d711b015e3bedb1a206de7f"
+          "sha256": "0ce0617938817da5c5a3f3555d6dc93760f83af92118894105e4b005c42aaa0a"
         },
         {
           "path": "skills/savyre-test-author/references/invocation-map.md",
@@ -325,7 +325,7 @@
         },
         {
           "path": "skills/savyre-test-author/references/runtime-boundary.md",
-          "sha256": "4827681323c0e5b07f2e06286ee85640a31cf842b1e0e7f3110e6429685a8eab"
+          "sha256": "4b752e321a85300af9a2a3fc833b6304af93f5ae48aee2358baa0ca64f32dba2"
         }
       ]
     },
@@ -356,7 +356,7 @@
         },
         {
           "path": "skills/savyre-ui-ux-quality/references/runtime-boundary.md",
-          "sha256": "4827681323c0e5b07f2e06286ee85640a31cf842b1e0e7f3110e6429685a8eab"
+          "sha256": "4b752e321a85300af9a2a3fc833b6304af93f5ae48aee2358baa0ca64f32dba2"
         },
         {
           "path": "skills/savyre-ui-ux-quality/references/standards.md",

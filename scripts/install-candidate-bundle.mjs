@@ -1,3 +1,10 @@
+/**
+ * Install candidate bundle FROM org run-config INTO this Cursor plugin.
+ * Direction: org → plugin only. Never copy this plugin's bundles back into org
+ * (that overwrite loop makes org files "come back" after commit).
+ *
+ * Prefer: npm run publish:bundle  (from packages/savyre-run-config)
+ */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -11,6 +18,10 @@ const sourceBundle = path.join(sourceRoot, 'bundles', 'bundle_candidate_1');
 const destBundle = path.join(pluginRoot, 'bundles', 'bundle_candidate_1');
 
 function copyDir(src, dest) {
+  const orgBundles = path.resolve(sourceRoot, 'bundles');
+  if (path.resolve(dest) === orgBundles || path.resolve(dest).startsWith(orgBundles + path.sep)) {
+    throw new Error(`Refusing to write into org source bundle: ${dest}`);
+  }
   fs.mkdirSync(dest, { recursive: true });
   for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
     const from = path.join(src, entry.name);

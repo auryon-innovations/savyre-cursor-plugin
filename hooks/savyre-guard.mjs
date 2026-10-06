@@ -278,6 +278,71 @@ function chatUserMessage(kind, opts = {}) {
   return brain.chatUserMessage(kind, opts);
 }
 
+/** Agent-only S04 recipe; never paste into spoken chat. */
+function agentImplementRecipe(nextBacklogItemId) {
+  const id = String(nextBacklogItemId || '').trim();
+  if (brain && typeof brain.chatAgentImplementRecipe === 'function') {
+    return `${brain.chatAgentImplementRecipe({ nextBacklogItemId: id || null })} Wait for /savyre-next. Do not lock Build & Review while backlog items remain.`;
+  }
+  return `Implement only backlog item \`${id || 'one item'}\` this turn. Write its application files and change report for that id only, then stop. Speak the short userMessage exactly — do not recite process recipes. Wait for /savyre-next. Do not lock Build & Review while backlog items remain.`;
+}
+
+function loadDesignCheckpoint(workspace) {
+  if (!brain || typeof brain.loadAwaitingUiUxDesignCheckpoint !== 'function') return null;
+  try {
+    return brain.loadAwaitingUiUxDesignCheckpoint(workspace);
+  } catch {
+    return null;
+  }
+}
+
+function designCheckpointChat(cp) {
+  if (!cp?.backlogId || !cp?.previewUrl) return null;
+  if (brain && typeof brain.buildUiUxDesignCheckpointChat === 'function') {
+    return brain.buildUiUxDesignCheckpointChat({
+      backlogId: cp.backlogId,
+      previewUrl: cp.previewUrl,
+      reportRel: cp.reportRel || null,
+      itemLabel: cp.itemLabel || null
+    });
+  }
+  const stem =
+    brain && typeof brain.formatUiUxDesignCheckpointQuestion === 'function'
+      ? brain.formatUiUxDesignCheckpointQuestion({
+          backlogId: cp.backlogId,
+          itemLabel: cp.itemLabel || null
+        })
+      : `Is the ${cp.backlogId} preview OK to continue?`;
+  const userMessage = chatUserMessage('design_checkpoint', {
+    nextBacklogItemId: cp.backlogId,
+    previewUrl: cp.previewUrl,
+    reportRel: cp.reportRel || null,
+    summary: cp.itemLabel || null,
+    question: stem
+  });
+  const askQuestion =
+    brain && typeof brain.toCursorAskQuestionPayload === 'function'
+      ? brain.toCursorAskQuestionPayload({
+          question: stem,
+          questionId: null,
+          questionOptions: [
+            'Approve design and continue',
+            'Request design changes',
+            'Something else (I will type it)'
+          ]
+        })
+      : null;
+  const agentMessage =
+    brain && typeof brain.chatAgentDesignCheckpointRecipe === 'function'
+      ? `DESIGN CHECKPOINT for ${cp.backlogId}: call Cursor AskQuestion NOW with askQuestion. ${brain.chatAgentDesignCheckpointRecipe({ backlogId: cp.backlogId, reportRel: cp.reportRel })} userMessage has the browser-openable preview URL.`
+      : `DESIGN CHECKPOINT for ${cp.backlogId}: call Cursor AskQuestion NOW. Speak userMessage. Do not lock Build & Review.`;
+  return { userMessage, askQuestion, agentMessage };
+}
+
+function looksLikeDesignCheckpointSpoken(text) {
+  return /Please check the preview for|design is OK to continue/i.test(String(text || ''));
+}
+
 function chatStartUserMessage(input) {
   if (!brain) return BRAIN_MISSING_USER_MESSAGE;
   const stageId = String(input?.stageId || '');
@@ -1560,28 +1625,94 @@ function withUnifiedTurn(payload, workspace) {
     }
   }
   if (data.intervention) next.intervention = data.intervention;
+  if (data.designCheckpoint) next.designCheckpoint = data.designCheckpoint;
+  if (payload.designCheckpoint) next.designCheckpoint = payload.designCheckpoint;
+  const adapterDesignSpoken =
+    looksLikeDesignCheckpointSpoken(data.composer?.userMessage) ||
+    looksLikeDesignCheckpointSpoken(data.userMessage);
+  const payloadDesignSpoken = looksLikeDesignCheckpointSpoken(payload.userMessage);
+  const designWins = Boolean(
+    next.designCheckpoint ||
+      data.designCheckpoint ||
+      payload.designCheckpoint ||
+      adapterDesignSpoken ||
+      payloadDesignSpoken
+  );
+  // Remaining backlog must NOT clobber design-checkpoint AskQuestion / spoken copy.
   const keepGuardSpoken =
-    Boolean(payload.nextBacklogItemId) ||
-    (typeof payload.userMessage === 'string' &&
-      (/to confirm/.test(payload.userMessage) ||
-        /to lock /.test(payload.userMessage) ||
-        /Please check `/.test(payload.userMessage) ||
-        /I'll implement/.test(payload.userMessage) ||
-        /Build & Review stays open/.test(payload.userMessage) ||
-        /do not lock Build/.test(payload.userMessage) ||
-        /I've written `/.test(payload.userMessage) ||
-        /I've saved that under `/.test(payload.userMessage) ||
-        payload.userMessage === stage01DraftAction() ||
-        (brain &&
-          typeof brain.stage01DraftAction === 'function' &&
-          payload.userMessage === brain.stage01DraftAction('s01-task-definition'))));
-  if (keepGuardSpoken && typeof payload.userMessage === 'string' && payload.userMessage.trim()) {
+    !designWins &&
+    (Boolean(payload.nextBacklogItemId) ||
+      (typeof payload.userMessage === 'string' &&
+        (/to confirm/.test(payload.userMessage) ||
+          /to lock /.test(payload.userMessage) ||
+          /Please check `/.test(payload.userMessage) ||
+          /I'll implement/.test(payload.userMessage) ||
+          /Next up is/.test(payload.userMessage) ||
+          /Build & Review stays open/.test(payload.userMessage) ||
+          /do not lock Build/.test(payload.userMessage) ||
+          /I've written `/.test(payload.userMessage) ||
+          /I've saved that under `/.test(payload.userMessage) ||
+          payload.userMessage === stage01DraftAction() ||
+          (brain &&
+            typeof brain.stage01DraftAction === 'function' &&
+            payload.userMessage === brain.stage01DraftAction('s01-task-definition')))));
+  if (designWins) {
+    const built =
+      next.designCheckpoint || data.designCheckpoint || payload.designCheckpoint
+        ? designCheckpointChat(next.designCheckpoint || data.designCheckpoint || payload.designCheckpoint)
+        : null;
+    if (adapterDesignSpoken && data.composer?.userMessage) {
+      next.composer = {
+        ...data.composer,
+        report:
+          typeof data.composer.report === 'string' && data.composer.report.trim()
+            ? data.composer.report.trim()
+            : typeof payload.composer?.report === 'string'
+              ? payload.composer.report
+              : ''
+      };
+      next.userMessage = data.composer.userMessage.trim();
+      next.askQuestion =
+        data.askQuestion || data.composer.askQuestion || payload.askQuestion || built?.askQuestion || null;
+      if (next.askQuestion) next.composer.askQuestion = next.askQuestion;
+    } else if (payloadDesignSpoken && typeof payload.userMessage === 'string') {
+      next.userMessage = payload.userMessage.trim();
+      next.askQuestion =
+        payload.askQuestion || payload.composer?.askQuestion || data.askQuestion || built?.askQuestion || null;
+      next.composer = {
+        userMessage: next.userMessage,
+        report: '',
+        lead: '',
+        ...(next.askQuestion ? { askQuestion: next.askQuestion } : {})
+      };
+    } else if (built) {
+      next.userMessage = built.userMessage;
+      next.askQuestion = built.askQuestion;
+      next.composer = {
+        userMessage: built.userMessage,
+        report: '',
+        lead: '',
+        askQuestion: built.askQuestion
+      };
+      if (!payload.message) next.message = built.agentMessage;
+    } else if (data.composer && typeof data.composer.userMessage === 'string' && data.composer.userMessage.trim()) {
+      next.composer = { ...data.composer };
+      next.userMessage = data.composer.userMessage.trim();
+      next.askQuestion = data.askQuestion || data.composer.askQuestion || payload.askQuestion || null;
+    }
+    next.forbidAskQuestion = !next.askQuestion;
+  } else if (keepGuardSpoken && typeof payload.userMessage === 'string' && payload.userMessage.trim()) {
     next.composer = {
       userMessage: payload.userMessage,
       report: '',
-      lead: ''
+      lead: '',
+      ...(payload.askQuestion ? { askQuestion: payload.askQuestion } : {}),
+      ...(payload.composer?.askQuestion ? { askQuestion: payload.composer.askQuestion } : {})
     };
     next.userMessage = payload.userMessage;
+    if (payload.askQuestion || payload.composer?.askQuestion) {
+      next.askQuestion = payload.askQuestion || payload.composer.askQuestion;
+    }
   } else if (data.composer && typeof data.composer.userMessage === 'string' && data.composer.userMessage.trim()) {
     next.composer = {
       ...data.composer,
@@ -1593,6 +1724,10 @@ function withUnifiedTurn(payload, workspace) {
             : ''
     };
     next.userMessage = data.composer.userMessage.trim();
+    if (data.askQuestion || data.composer.askQuestion) {
+      next.askQuestion = data.askQuestion || data.composer.askQuestion;
+      next.composer.askQuestion = next.askQuestion;
+    }
   } else if (typeof data.userMessage === 'string' && data.userMessage.trim()) {
     next.userMessage = data.userMessage.trim();
   } else if (typeof data.intakeReview === 'string' && data.intakeReview.trim()) {
@@ -1654,15 +1789,32 @@ function withUnifiedTurn(payload, workspace) {
       }
     }
   }
-  if (next.intervention && next.intervention.ask === true && next.pendingQuestion?.id) {
-    next.message = `Ask ${next.pendingQuestion.id} in this chat. Speak userMessage exactly (it tells them to run /savyre-answer). When they answer, run /savyre-answer with their words. Resume this same question if the chat restarts. Keep/Undo on a file edit is not an answer.`;
-  } else if (payload.nextBacklogItemId) {
+  if (next.intervention && next.intervention.ask === true && next.pendingQuestion?.id && next.askQuestion) {
+    next.message = `OPEN QUESTION ${next.pendingQuestion.id}: call Cursor AskQuestion NOW with askQuestion payload. After they click, run /savyre-answer ${next.pendingQuestion.id} <1|2|3>. Do not print Options text when the picker ran.`;
+  } else if (designWins && (next.askQuestion || next.designCheckpoint || looksLikeDesignCheckpointSpoken(next.userMessage))) {
     next.message =
       payload.message ||
-      `Implement only backlog item \`${payload.nextBacklogItemId}\` this turn. Speak userMessage. Wait for /savyre-next. Do not lock Build & Review while backlog items remain.`;
-  } else if (next.intervention && next.intervention.ask === false) {
+      data.message ||
+      (next.designCheckpoint
+        ? designCheckpointChat(next.designCheckpoint)?.agentMessage
+        : null) ||
+      `DESIGN CHECKPOINT: call Cursor AskQuestion NOW with askQuestion. Speak userMessage. Do not lock Build & Review.`;
+    next.forbidAskQuestion = !next.askQuestion;
+  } else if (payload.nextBacklogItemId) {
+    next.message = payload.message || agentImplementRecipe(payload.nextBacklogItemId);
+  } else if (
+    next.forbidAskQuestion === true ||
+    next.askQuestion == null ||
+    (next.intervention && next.intervention.ask === false)
+  ) {
+    const resolved = Array.isArray(next.resolvedOpenQuestionIds)
+      ? next.resolvedOpenQuestionIds.join(', ')
+      : 'none';
     next.message =
-      'Follow userMessage. Do not invent a question. Treat routine naming, layout, and stack choices as assumptions.';
+      payload.message ||
+      `Follow userMessage. forbidAskQuestion=true. resolvedOpenQuestionIds=[${resolved}]. Do NOT call AskQuestion (not even if the user says ask again). Use recorded answers and continue.`;
+    next.forbidAskQuestion = true;
+    next.askQuestion = null;
   }
   return next;
 }
@@ -1686,6 +1838,20 @@ async function runSavyreGate(workspace, subcommand, opts) {
       },
       chatUserMessage('unavailable')
     );
+  }
+  const gateStageHint =
+    typeof opts?.stageId === 'string' && opts.stageId.trim() ? opts.stageId.trim() : null;
+  if (
+    subcommand === 'validate' &&
+    (gateStageHint === 's05-test-resolve' || gateStageHint === '11-test-execution') &&
+    brain &&
+    typeof brain.ensureS05TestPlanOnDisk === 'function'
+  ) {
+    try {
+      brain.ensureS05TestPlanOnDisk(workspace);
+    } catch {
+      /* CLI evaluateAcTddGatesForStage also ensures */
+    }
   }
   const timeout =
     Number(opts?.timeoutMs) > 0
@@ -1734,7 +1900,17 @@ async function runSavyreGate(workspace, subcommand, opts) {
         nextStageId: nextId && nextId !== fromStage ? nextId : null
       });
     } else if (subcommand === 'validate' && !parsed.ok) {
-      userMessage = chatUserMessage('validate_failed');
+      const failSummary =
+        (Array.isArray(parsed.errors) && parsed.errors[0]) ||
+        parsed.message ||
+        parsed.reason ||
+        '';
+      userMessage = chatUserMessage('validate_failed', {
+        summary: String(failSummary || '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 160)
+      });
     }
     return withUserMessage(
       {
@@ -1763,7 +1939,9 @@ async function runSavyreGate(workspace, subcommand, opts) {
       ...(pinnedStage ? { pinnedStageId: pinnedStage } : {}),
       ...(warning ? { warning } : {})
     },
-    subcommand === 'validate' ? chatUserMessage('validate_failed') : chatUserMessage('gate_failed', { summary: err.slice(0, 180) })
+    subcommand === 'validate'
+      ? chatUserMessage('validate_failed', { summary: err.slice(0, 160) })
+      : chatUserMessage('gate_failed', { summary: err.slice(0, 180) })
   );
 }
 
@@ -2473,11 +2651,14 @@ async function chatStageFollowupMessage(workspace, stageId, next) {
     backlogBlocked: backlog.backlogBlocked
   });
   if (stageId === '06-implementation' || stageId === 's04-build-review') {
+    const designCp = loadDesignCheckpoint(workspace);
+    const designChat = designCp ? designCheckpointChat(designCp) : null;
+    if (designChat) return designChat.agentMessage;
     if (backlog.backlogBlocked) {
       return formatBacklogBlockedMessage(backlog.remainingBacklogIds, backlog.stuckBacklog);
     }
     if (nextBacklogItemId) {
-      return `Implement only backlog item \`${nextBacklogItemId}\` this turn. Write its application files and \`${stageDraftRel(stageId)}\` for that id only, then stop. Speak userMessage. Wait for /savyre-next. Do not lock Build & Review while backlog items remain.`;
+      return agentImplementRecipe(nextBacklogItemId);
     }
     if (!aiReady) {
       return chatUserMessage('implement');
@@ -2620,11 +2801,14 @@ function buildSessionContext(manifest, source) {
   if (isImplement) {
     const reportRel = stageDraftRel(manifest.stageId);
     const nextId = source.nextBacklogItemId || '';
+    const awaitingDesign = Boolean(source.designCheckpoint?.backlogId);
     writeHint = source.backlogBlocked
       ? `Backlog items remain, but none can start. ${formatBacklogBlockedMessage(source.remainingBacklogIds, source.stuckBacklog)} Do not write application files and do not lock Build & Review.`
-      : nextId
-      ? `You may write application files with Write/StrReplace for backlog item \`${nextId}\` only. Do not implement any other backlog id this turn. Also write \`${reportRel}\` naming only \`${nextId}\` and that item's changed paths in backticks (and ## Open Questions). For that item, run the tests before the code (red) and again after the code (green) with \`npm test\`, \`node --test\`, or \`pytest\`. Savyre records those runs. Then stop. Do not run any other terminal command, start subagents, or delete files. Speak userMessage and wait for /savyre-next.`
-      : `You may write application files with Write/StrReplace for one independently executable backlog item only. Also write \`${reportRel}\` for that id only. Run that item's tests before the code and again after it with \`npm test\`, \`node --test\`, or \`pytest\`. Then stop. Do not run any other terminal command, start subagents, or delete files. Speak userMessage and wait for /savyre-next.`;
+      : awaitingDesign
+        ? `Design checkpoint is awaiting human OK for \`${source.designCheckpoint.backlogId}\`. Call Cursor AskQuestion from JSON askQuestion. Do not wire backend/TDD and do not lock Build & Review until they approve. Speak userMessage (preview URL). Wait for their answer.`
+        : nextId
+          ? `You may write application files with Write/StrReplace for backlog item \`${nextId}\` only. Do not implement any other backlog id this turn. Also write \`${reportRel}\` naming only \`${nextId}\` and that item's changed paths in backticks (and ## Open Questions). For that item, run the tests before the code (red) and again after the code (green) with \`npm test\`, \`node --test\`, or \`pytest\`. Savyre records those runs. Then stop. Do not run any other terminal command, start subagents, or delete files. Speak userMessage and wait for /savyre-next.`
+          : `You may write application files with Write/StrReplace for one independently executable backlog item only. Also write \`${reportRel}\` for that id only. Run that item's tests before the code and again after it with \`npm test\`, \`node --test\`, or \`pytest\`. Then stop. Do not run any other terminal command, start subagents, or delete files. Speak userMessage and wait for /savyre-next.`;
   } else if (isChatDraft) {
     const evidenceHint =
       manifest.stageId === '03-codebase-discovery' || manifest.stageId === 's02-code-discovery'
@@ -2746,6 +2930,7 @@ async function handleHook(input) {
     source.remainingBacklogIds = backlog.remainingBacklogIds;
     source.stuckBacklog = backlog.stuckBacklog;
     source.backlogBlocked = backlog.backlogBlocked;
+    source.designCheckpoint = loadDesignCheckpoint(workspace);
     const additional_context = buildSessionContext(manifest, source);
     await writeChatInjectState(workspace, {
       executionId: manifest.executionId,
@@ -3363,21 +3548,32 @@ async function cmdStart(userText) {
   const nextBacklogItemId = backlog.nextBacklogItemId;
   const hasRemainingBacklog = backlog.hasRemainingBacklog;
   const lockReady = aiReady && !hasRemainingBacklog;
-  const userMessage = chatStartUserMessage({
-    stageId,
-    confirmed: Boolean(existing?.developerConfirmed),
-    pendingQuestion: pending?.question || null,
-    pendingQuestionId: pending?.id || null,
-    aiReady: lockReady,
-    suggestedTask: taskReady,
-    ignoredUserText: Boolean(bind.ignoredUserText),
-    challengeComplete: pass.challengeComplete,
-    evidenceReady: pass.evidenceReady,
-    intakeSummary,
-    nextBacklogItemId,
-    remainingBacklogIds: backlog.remainingBacklogIds,
-    stuckBacklog: backlog.stuckBacklog
-  });
+  const designCp =
+    !pending && (stageId === 's04-build-review' || stageId === '06-implementation')
+      ? loadDesignCheckpoint(workspace)
+      : null;
+  const designChat = designCp ? designCheckpointChat(designCp) : null;
+  if (designChat) {
+    message = designChat.agentMessage;
+  }
+  const userMessage = designChat
+    ? designChat.userMessage
+    : chatStartUserMessage({
+        stageId,
+        confirmed: Boolean(existing?.developerConfirmed),
+        pendingQuestion: pending?.question || null,
+        pendingQuestionId: pending?.id || null,
+        aiReady: lockReady,
+        suggestedTask: taskReady,
+        ignoredUserText: Boolean(bind.ignoredUserText),
+        challengeComplete: pass.challengeComplete,
+        evidenceReady: pass.evidenceReady,
+        intakeSummary,
+        nextBacklogItemId,
+        remainingBacklogIds: backlog.remainingBacklogIds,
+        stuckBacklog: backlog.stuckBacklog,
+        designCheckpoint: designCp
+      });
   const verification = isVerificationBeforeCompletionEnabled()
     ? evaluateVerification({
         stageId,
@@ -3410,6 +3606,19 @@ async function cmdStart(userText) {
     message,
     userMessage,
     ...(nextBacklogItemId ? { nextBacklogItemId } : {}),
+    ...(designCp
+      ? {
+          designCheckpoint: designCp,
+          askQuestion: designChat?.askQuestion || null,
+          forbidAskQuestion: !designChat?.askQuestion,
+          composer: {
+            userMessage,
+            report: '',
+            lead: '',
+            ...(designChat?.askQuestion ? { askQuestion: designChat.askQuestion } : {})
+          }
+        }
+      : {}),
     ...chatSkillFields(stageId, turnOut?.state, {
       ...pass,
       hasRemainingBacklog
@@ -3417,7 +3626,7 @@ async function cmdStart(userText) {
     ...(capturedHash ? { originalTaskHash: capturedHash } : {}),
     ...(verification ? { verification } : {}),
     ...(continuation ? { continuation } : {}),
-    ...(intakeReport
+    ...(intakeReport && !designChat
       ? { composer: { userMessage, report: intakeReport, lead: intakeLead } }
       : {})
   };
@@ -4168,6 +4377,17 @@ async function cmdTurn() {
   if (!match.ok) return match;
   const session = await readJsonIfPresent(path.join(workspace, '.savyre', 'session.json'));
   const stageId = match.panelStageId;
+  if (
+    (stageId === 's05-test-resolve' || stageId === '11-test-execution') &&
+    brain &&
+    typeof brain.ensureS05TestPlanOnDisk === 'function'
+  ) {
+    try {
+      brain.ensureS05TestPlanOnDisk(workspace);
+    } catch {
+      /* best-effort runtime scaffold */
+    }
+  }
   const sessionId = session?.sessionId || 'local';
   const existing = await readOrCreateCheckpoint(workspace, stageId, sessionId);
   const {
@@ -4211,32 +4431,42 @@ async function cmdTurn() {
   const awaitingConfirm = isTaskCaptureStage(stageId) && spoken && !confirmed && !next;
   const awaitingLock =
     isTaskCaptureStage(stageId) && spoken && confirmed && aiReady && !locked && !next;
+  const designCp =
+    !next && (stageId === 's04-build-review' || stageId === '06-implementation')
+      ? loadDesignCheckpoint(workspace)
+      : null;
+  const designChat = designCp ? designCheckpointChat(designCp) : null;
   const userMessage = next
     ? chatUserMessage('ask_question', { question: next.question, questionId: next.id })
-    : spoken?.userMessage ||
-      chatStartUserMessage({
-        stageId,
-        confirmed,
-        aiReady: lockReady,
-        nextBacklogItemId,
-        remainingBacklogIds,
-        stuckBacklog,
-        challengeComplete: pass.challengeComplete,
-        evidenceReady: pass.evidenceReady
-      });
+    : designChat
+      ? designChat.userMessage
+      : spoken?.userMessage ||
+        chatStartUserMessage({
+          stageId,
+          confirmed,
+          aiReady: lockReady,
+          nextBacklogItemId,
+          remainingBacklogIds,
+          stuckBacklog,
+          challengeComplete: pass.challengeComplete,
+          evidenceReady: pass.evidenceReady,
+          designCheckpoint: designCp
+        });
   const message = next
     ? `Ask ${next.id} in this chat. Speak userMessage exactly (it tells them to run /savyre-answer). When they answer, run /savyre-answer with their words. Resume this same question if the chat restarts. Keep/Undo on a file edit is not an answer.`
-    : awaitingConfirm
-      ? TALK_FROM_ASSIGNED_THEN_CONFIRM
-      : awaitingLock
-        ? `Run verification-before-completion (turn.activeSkill). If the check passes, ${TALK_FROM_ASSIGNED_THEN_LOCK} Do not run lock, validate, or start the next stage yourself. Savyre unlocks if Validate passes.`
-        : backlogBlocked
-          ? `${formatBacklogBlockedMessage(remainingBacklogIds, stuckBacklog)} Do not lock Build & Review and do not start another backlog item.`
-        : nextBacklogItemId
-          ? `Implement only backlog item \`${nextBacklogItemId}\` this turn. Write its application files and \`${stageDraftRel(stageId)}\` for that id only, then stop. Speak userMessage. Wait for /savyre-next. Do not lock Build & Review while backlog items remain.`
-          : gate.ok
-            ? `Run verification-before-completion (turn.activeSkill). If the check passes, ${waitForDeveloperSlash(lockSlash(stageId))} Do not run it, validate, or start the next stage yourself. Savyre unlocks if Validate passes.`
-            : 'Follow turn.activeSkill. Do not lock until that pass is done.';
+    : designChat
+      ? designChat.agentMessage
+      : awaitingConfirm
+        ? TALK_FROM_ASSIGNED_THEN_CONFIRM
+        : awaitingLock
+          ? `Run verification-before-completion (turn.activeSkill). If the check passes, ${TALK_FROM_ASSIGNED_THEN_LOCK} Do not run lock, validate, or start the next stage yourself. Savyre unlocks if Validate passes.`
+          : backlogBlocked
+            ? `${formatBacklogBlockedMessage(remainingBacklogIds, stuckBacklog)} Do not lock Build & Review and do not start another backlog item.`
+            : nextBacklogItemId
+              ? agentImplementRecipe(nextBacklogItemId)
+              : gate.ok
+                ? `Run verification-before-completion (turn.activeSkill). If the check passes, ${waitForDeveloperSlash(lockSlash(stageId))} Do not run it, validate, or start the next stage yourself. Savyre unlocks if Validate passes.`
+                : 'Follow turn.activeSkill. Do not lock until that pass is done.';
   const pinnedHashes = await readPinnedSkillHashes(workspace);
   const identities = await readWorkflowIdentities(workspace);
   const skillDelivery = buildGuardSkillDelivery(stageId, turn.state, pass, {}, pinnedHashes, identities);
@@ -4258,8 +4488,21 @@ async function cmdTurn() {
       message,
       userMessage,
       ...(nextBacklogItemId ? { nextBacklogItemId } : {}),
+      ...(designCp
+        ? {
+            designCheckpoint: designCp,
+            askQuestion: designChat?.askQuestion || null,
+            forbidAskQuestion: !designChat?.askQuestion,
+            composer: {
+              userMessage,
+              report: '',
+              lead: '',
+              ...(designChat?.askQuestion ? { askQuestion: designChat.askQuestion } : {})
+            }
+          }
+        : {}),
       skillDelivery,
-      ...(spoken?.report
+      ...(spoken?.report && !designChat
         ? { composer: { userMessage, report: spoken.report, lead: spoken.lead || '' } }
         : {})
     },

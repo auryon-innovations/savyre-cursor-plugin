@@ -16,7 +16,7 @@ This skill rides along on Stages 01–15. `unifiedTurn` is a read-only adapter o
 - On Build & Review, if JSON `nextBacklogItemId` is set, the next step is implement that id (or wait for `/savyre-next`), not lock.
 - After a stage passes, speak 1–2 short sentences, then `userMessage` **exactly**. Do not repeat “X is done. Y is next.”
 - If the panel is already on Implementation Plan after Task Definition (no Code Discovery files), do **not** run Code Discovery. Plan from the Task Definition artifacts only.
-- If JSON `intervention.ask` is true or `turn.question` is set, ask **only that one** question now. Do not ask them to lock. Do not write challenge-findings. Do not mint new OQ ids when an Open Questions table already exists. Do not re-ask a RESOLVED row. Do not invent persist/stack/naming questions.
+- Call Cursor `AskQuestion` **only** when JSON `askQuestion` is set (or `intervention.ask` is true with a pending OQ). If `forbidAskQuestion` is true, `askQuestion` is null, or the id is in `resolvedOpenQuestionIds`, do **not** AskQuestion — even if the user says ask again. When allowed: clickable single-select, ids `1`/`2`/`3`, prefer JSON `askQuestion`; after click run `/savyre-answer`. Do not dump Options text when the picker ran. Do not ask them to lock. Do not mint new OQ ids. Do not re-ask RESOLVED rows.
 - `unifiedTurn.status` of `complete` means Savyre already finished the stage on disk. You still cannot unlock.
 - `canApprove` and `canUnlockStage` are always false.
 - Speak only JSON `userMessage`. Do not dump the turn JSON.

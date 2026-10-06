@@ -8,7 +8,7 @@ Read when routing a stage or selecting a reusable pass. This is a candidate call
 | S01 | savyre-stage-task-definition | savyre-requirement-challenge | After analyzed draft, before task confirmation |
 | S02 | savyre-stage-code-discovery | savyre-evidence-grounding | After discovery, before grounded impact/finalization |
 | S03 | savyre-stage-implementation-plan | none mandatory | Existing backlog validation is runtime logic; note UI scope for later `savyre-ui-ux-quality` |
-| S04 | savyre-stage-build-review | savyre-ui-ux-quality (conditional) | Explicit build mode before affected UI implementation; distinct review mode against current UI changes |
+| S04 | savyre-stage-build-review | savyre-ui-ux-quality (conditional) | Lightweight UI preview + human design OK before backend; distinct review mode against current UI changes |
 | S05 | savyre-stage-test-resolve | none mandatory | Strategy/diagnosis read-only; write/correction action dispatched to S04; consume UI/UX findings with tests |
 | S06 | savyre-stage-delivery-readiness | none mandatory | Actual readiness policy is runtime logic; require current UI/UX `passed` or justified `not_applicable` |
 | S07 | savyre-stage-handoff | none mandatory | Export is supported runtime action; carry UI/UX outcomes and limitations |

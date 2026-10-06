@@ -11,7 +11,17 @@ This skill rides along on every Savyre stage. Savyre owns the next slash. You ow
 
 ## Talk to the user
 
-On **every** stage, speak JSON `userMessage` **exactly** as the last line. Do not invent confirm / implement / lock / check wording. Your own sentences must **not** repeat a draft path or say “I wrote `path`” / “I've written `path`”.
+**OPEN QUESTIONS — only when runtime says so (hard rule):**
+
+- Call Cursor `AskQuestion` **ONLY** when JSON `askQuestion` / `composer.askQuestion` is set, or `intervention.ask` is true with a pending OQ.
+- If `askQuestion` is absent/null, or `forbidAskQuestion` is true, or `intervention.ask` is false, or the OQ id is in `resolvedOpenQuestionIds` — **do NOT** call AskQuestion (not even if the user says “ask again”). Use the recorded answer and continue the stage.
+- When AskQuestion is allowed:
+  1. Next tool call must be Cursor `AskQuestion` (single-select). Prefer JSON `askQuestion` payload. Else option ids `1`/`2`/`3`; product-specific labels; prompt = stem only.
+  2. Do **not** print `Options:` / `1)` / `2)` / `3)` when the picker ran.
+  3. After they click, immediately run `/savyre-answer <OQ-id> 1` (or 2/3).
+  4. Only if `AskQuestion` is unavailable: speak `userMessage` **exactly** (multiline Options).
+
+For **all other** turns: speak JSON `userMessage` **exactly** as the last line. Do not invent confirm / implement / lock / check wording. Do **not** recite agent `message` recipes (skill names, TDD, CHK ids, report paths). Your own sentences must **not** repeat a draft path or say “I wrote `path`” / “I've written `path`”.
 
 If `userMessage` asks them to **confirm** (`/savyre-next` to confirm):
 
@@ -29,7 +39,7 @@ If `userMessage` says you will **write** or **implement** something (path or bac
 
 1. Do that work (write the file / implement only that backlog id).
 2. Run `turn`.
-3. Speak the **new** `userMessage` **exactly** (it may say implement the next id, check a draft, or lock — do not invent which).
+3. Speak the **new** `userMessage` **exactly** (it may say implement the next id, check a draft, or lock — do not invent which). If the new line is an open question, follow OPEN QUESTIONS FIRST above.
 
 If `userMessage` asks them to **check** a file or **lock** a stage:
 
@@ -48,4 +58,4 @@ Then do any file work `message` asked for. Cursor will collapse those reads and 
 - Do not mention `developer-review.md`, artifact, or ACCEPTED.
 - Do not unlock or approve. Slash commands are OK.
 
-If `composer.quality.ok` is false, still speak `userMessage`. Do not invent a longer explanation.
+If `composer.quality.ok` is false, still speak `userMessage` (or run AskQuestion for open questions). Do not invent a longer explanation.

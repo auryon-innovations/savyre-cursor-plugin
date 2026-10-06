@@ -37,8 +37,16 @@ Same behavior in Cursor Agent and Claude Code. When managed Chat has this stage 
 
 1. Capture exact designated original task separately from a helpful restatement; distinguish product requirements from workflow instructions. In Chat, that capture is the `assignedTask` write above.
 2. Extract supported requirements and observable criteria; include user stories only when actor/value helps feature work. Link story/criterion to requirement/source; technical fixes need no forced story.
-3. Challenge for contradictions, inferred features, vague acceptance or unaccepted assumptions. Ask one material blocking question at a time with stable runtime IDs; reuse resolved decisions. Do not ask routine questions unrelated to the task.
-3a. **Product scope rule (Chat):** If the original task is a high-level product name without concrete user-visible behavior, you **must** put one blocking Open Question on minimum functionality in `task_brief.md` and wait for `/savyre-answer`. Do not invent add/edit/delete/persist (or similar) as decided facts to avoid asking.
+3. Challenge for contradictions, inferred features, vague acceptance or unaccepted assumptions. Ask one material blocking question at a time with stable runtime IDs; reuse resolved decisions. Do not ask routine questions unrelated to the task. **Every Open Question must include exactly three product-specific choose options** in multiline form:
+   ```
+   <question>?
+   Options:
+   1) …
+   2) …
+   3) …
+   ```
+   Present those options with Cursor `AskQuestion` (clickable single-select, ids `1`/`2`/`3`) so the developer can tap a choice. After they click, run `/savyre-answer`. If the picker is unavailable, use the multiline `Options:` block — never flatten to one line. Options must be concrete product/behavior alternatives for *this* app (e.g. “Create/edit/delete notes”, “Shared lists”, “Offline personal only”) — **never** bare `Yes` / `No`. Option 3 may be “Something else (I will type it)” only as an escape hatch after two real product choices.
+3a. **Product scope rule (Chat):** If the original task is a high-level product name without concrete user-visible behavior, you **must** put one blocking Open Question on minimum functionality in `task_brief.md` with **three product-scope options** (different MVP feature sets for this product) and wait for `/savyre-answer`. Do not invent add/edit/delete/persist (or similar) as decided facts to avoid asking.
 3b. **Production-level contract:** Prefer real-user AC plus NFRs when needed (authz, secrets, input validation, a11y, basic perf, privacy). Target a production-level app, not a demo sketch. Do not require deploy/ops runbooks.
 3c. **UI / visual design:** If the repo already has app UI, plan to **match that theme**. If greenfield and the user gave no colors/theme/reference, ask **one** OQ for preferred colors, light vs dark, or a reference app; if they decline or say decide for you, accept the **default polished UI bar** (hierarchy, spacing, coherent colors, consistent components, empty/loading/error states, responsive primary pages). Do **not** browse the web to copy competitor UIs.
 4. Revise analyzed brief after answers, then request one final confirmation of the current complete contract. **Call out Acceptance Criteria by ID** and ask the developer to approve that exact AC set before lock. Reopened scope creates a new draft/revision.

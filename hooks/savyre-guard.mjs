@@ -1520,6 +1520,55 @@ function readPanelStageId(workspace) {
   }
 }
 
+function readStageStatusDoc(workspace) {
+  try {
+    return JSON.parse(readFileSync(path.join(workspace, '.savyre', 'stage-status.json'), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/** True when every catalog stage is complete (or currentStageId cleared after S07). */
+function isWorkflowFullyComplete(workspace) {
+  const raw = readStageStatusDoc(workspace);
+  if (!raw || typeof raw !== 'object') return false;
+  const total = Number(raw.totalStages);
+  const completed = Number(raw.completedStages);
+  if (Number.isFinite(total) && total > 0 && Number.isFinite(completed) && completed >= total) {
+    return true;
+  }
+  const stages = Array.isArray(raw.stages) ? raw.stages : [];
+  if (stages.length > 0 && stages.every((s) => s && s.complete === true)) {
+    return true;
+  }
+  return false;
+}
+
+function isTerminalWorkflowStage(stageId) {
+  const id = String(stageId || '')
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, '-');
+  return (
+    id === 's07-handoff' ||
+    id === '15-final-summary-ai-reflection' ||
+    id === '14-final-summary-ai-reflection'
+  );
+}
+
+function workflowCompleteUserMessage(opts = {}) {
+  const fromBrain = chatUserMessage('workflow_complete', opts);
+  if (typeof fromBrain === 'string' && fromBrain.trim() && /savyre-export/i.test(fromBrain)) {
+    return fromBrain.trim();
+  }
+  return (
+    'All seven stages are complete. Run `/savyre-export` to download the HTML report, ' +
+    'then use **Complete workflow** in the Savyre panel to end this session. ' +
+    'If you want to work on a different task, use **Archive & start new** in the panel — ' +
+    'do not re-run Stage 01 for the task you already finished.'
+  );
+}
+
 async function effectivePanelStageId(workspace) {
   return readPanelStageId(workspace);
 }
@@ -1550,6 +1599,18 @@ function chatPanelMismatchResult(action, boundStageId, panelStageId) {
 async function requireChatPanelMatch(workspace, action) {
   const panelStageId = readPanelStageId(workspace);
   if (!panelStageId) {
+    if (isWorkflowFullyComplete(workspace)) {
+      return withUserMessage(
+        {
+          ok: true,
+          action,
+          unlocksStage: false,
+          reason: 'workflow-complete',
+          workflowComplete: true
+        },
+        workflowCompleteUserMessage()
+      );
+    }
     return withUserMessage(
       {
         ok: false,
@@ -1652,6 +1713,8 @@ function withUnifiedTurn(payload, workspace) {
           /do not lock Build/.test(payload.userMessage) ||
           /I've written `/.test(payload.userMessage) ||
           /I've saved that under `/.test(payload.userMessage) ||
+          /\/savyre-export/.test(payload.userMessage) ||
+          /All seven stages are complete/.test(payload.userMessage) ||
           payload.userMessage === stage01DraftAction() ||
           (brain &&
             typeof brain.stage01DraftAction === 'function' &&
@@ -1892,13 +1955,25 @@ async function runSavyreGate(workspace, subcommand, opts) {
       });
     }
     if (subcommand === 'validate' && parsed.ok) {
-      message = `${message} Speak userMessage. Wait for /savyre-next. Do not start the next stage yourself. Unlock is Savyre's result, not a Chat decision.`.trim();
       const fromStage = gateStage || pinnedStage;
       const nextId = readPanelStageId(workspace);
-      userMessage = chatUserMessage('ask_start_next', {
-        stageId: fromStage,
-        nextStageId: nextId && nextId !== fromStage ? nextId : null
-      });
+      const nextStageId = nextId && nextId !== fromStage ? nextId : null;
+      const done =
+        isWorkflowFullyComplete(workspace) ||
+        !nextStageId ||
+        (isTerminalWorkflowStage(fromStage) &&
+          (!nextStageId ||
+            /^(s01-task-definition|01-task-input)$/i.test(String(nextStageId || ''))));
+      if (done) {
+        message = `${message} Workflow is complete. Speak userMessage exactly. Do not start Stage 01 or a new cycle. Wait for the developer to export or complete the session.`.trim();
+        userMessage = workflowCompleteUserMessage({ stageId: fromStage });
+      } else {
+        message = `${message} Speak userMessage. Wait for /savyre-next. Do not start the next stage yourself. Unlock is Savyre's result, not a Chat decision.`.trim();
+        userMessage = chatUserMessage('ask_start_next', {
+          stageId: fromStage,
+          nextStageId
+        });
+      }
     } else if (subcommand === 'validate' && !parsed.ok) {
       const failSummary =
         (Array.isArray(parsed.errors) && parsed.errors[0]) ||
@@ -3412,6 +3487,16 @@ async function cmdStart(userText) {
         reason: 'No active Savyre session. Start a session in the Savyre panel first.'
       },
       chatUserMessage('start_panel')
+    );
+  }
+  if (isWorkflowFullyComplete(workspace) && !leftover) {
+    return withUserMessage(
+      {
+        mode: 'complete',
+        reason: 'workflow-complete',
+        workflowComplete: true
+      },
+      workflowCompleteUserMessage()
     );
   }
   await markSessionChatWorker(workspace);
@@ -4953,11 +5038,29 @@ async function cmdGenerateFinal() {
  */
 async function cmdNext() {
   const workspace = await findWorkspaceFromHook({ cwd: process.cwd() });
+  if (isWorkflowFullyComplete(workspace)) {
+    return withUserMessage(
+      {
+        ok: true,
+        action: 'next',
+        unlocksStage: false,
+        reason: 'workflow-complete',
+        workflowComplete: true
+      },
+      workflowCompleteUserMessage()
+    );
+  }
   const panelStageId = await effectivePanelStageId(workspace);
   if (!panelStageId) {
     return withUserMessage(
-      { ok: false, action: 'next', unlocksStage: false, reason: 'No currentStageId' },
-      chatUserMessage('start_panel')
+      {
+        ok: true,
+        action: 'next',
+        unlocksStage: false,
+        reason: 'No currentStageId after final stage',
+        workflowComplete: true
+      },
+      workflowCompleteUserMessage()
     );
   }
   const boundStageId = await readChatBoundStageId(workspace);

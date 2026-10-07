@@ -35,3 +35,4 @@ node "$env:USERPROFILE/.cursor/plugins/local/savyre-cursor-plugin/hooks/savyre-g
 2. After Task Input confirm, **do not speak leftover “I’ll write the Task Input draft for …”**. Write the draft if `message` asks you to. Then run `turn`, talk from Assigned task, then speak `userMessage`. Wait. Do not invent “Draft is ready. If it looks right.” Do not send the user to the Savyre panel for `/savyre-next`.
 3. If generate-final failed, the guard already tried one Open Questions repair. Do not ask them to lock again unless `userMessage` says so.
 4. Chat cannot unlock. Do not claim the next stage is accepted.
+5. If `userMessage` says all seven stages are complete (or mentions `/savyre-export`), **stop the stage loop**. Speak that message exactly. Do **not** start Stage 01, rewrite the old task, or invent a “new cycle.” Wait for the developer to export / Complete workflow / Archive & start new.

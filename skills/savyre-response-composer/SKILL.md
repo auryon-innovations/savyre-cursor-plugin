@@ -51,6 +51,12 @@ If `userMessage` is only **Run `/savyre-next` to start …** (or **to continue**
 1. Write **1–2 short sentences** (this stage passed; you have not started the next one).
 2. Speak `userMessage` **exactly**. Do **not** add “X is done. Y is next.”
 
+If `userMessage` says **all seven stages are complete** or mentions **`/savyre-export`**:
+
+1. Speak `userMessage` **exactly**.
+2. Do **not** start Stage 01, rewrite the finished task, or invent a “new cycle.”
+3. Wait for the developer to export, Complete workflow, or Archive & start new.
+
 Then do any file work `message` asked for. Cursor will collapse those reads and edits.
 
 - Speak `composer.details` only if they ask for more detail.

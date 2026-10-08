@@ -23,7 +23,7 @@ Read `references/invocation-map.md` before selecting a dedicated/shared pass. S0
 4. Use optional existing Mermaid only for evidenced useful structure; diagrams/relationship tables share evidence and inference labels. Ask only material missing scope/access/contradictions; scope changes reopen S01 through runtime.
 
 ## Production-level quality
-Map real repo constraints (patterns, auth/data, tests). Explicitly separate **reuse vs greenfield**. Call out real-user risks (authz, validation, error handling). No fictional stack. Document any **existing UI theme** to reuse; if none, note greenfield visuals for later stages.
+Map real repo constraints (patterns, auth/data, tests). Explicitly separate **reuse vs greenfield**. Call out real-user risks (authz, validation, error handling). No fictional stack. Document any **existing UI theme** to reuse; if none, note greenfield visuals for later stages. For UI tasks, record an **implementation profile** (target package, framework, component library, styling, unknowns) with repo evidence. Do not infer permission to add React/shadcn/Tailwind.
 
 ## Output contract
 Produce a concise response with outcome, material question/blocker if any and the verified next action. Detailed content belongs in the assigned draft `codebase_impact_report.md` or returned preview content when no writer is delegated.

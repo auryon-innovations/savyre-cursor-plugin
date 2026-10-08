@@ -284,7 +284,8 @@ function agentImplementRecipe(nextBacklogItemId) {
   if (brain && typeof brain.chatAgentImplementRecipe === 'function') {
     return `${brain.chatAgentImplementRecipe({ nextBacklogItemId: id || null })} Wait for /savyre-next. Do not lock Build & Review while backlog items remain.`;
   }
-  return `Implement only backlog item \`${id || 'one item'}\` this turn. Write its application files and change report for that id only, then stop. Speak the short userMessage exactly — do not recite process recipes. Wait for /savyre-next. Do not lock Build & Review while backlog items remain.`;
+  const doneId = id || 'this item';
+  return `Implement only backlog item \`${doneId}\` this turn. Write its application files and change report for that id only, then stop. Do not start another backlog id. End by speaking exactly: \`${doneId}\` is done for this turn. Run \`/savyre-next\` for the next step. Do not recite process recipes. Do not lock Build & Review while backlog items remain.`;
 }
 
 function loadDesignCheckpoint(workspace) {
@@ -297,11 +298,18 @@ function loadDesignCheckpoint(workspace) {
 }
 
 function designCheckpointChat(cp) {
-  if (!cp?.backlogId || !cp?.previewUrl) return null;
+  const imageRels = Array.isArray(cp?.imageRels)
+    ? cp.imageRels.map((x) => String(x || '').trim()).filter(Boolean)
+    : [];
+  const canvasRef = String(cp?.canvasRef || '').trim();
+  const previewUrl = String(cp?.previewUrl || '').trim();
+  if (!cp?.backlogId || !(previewUrl || imageRels.length || canvasRef)) return null;
   if (brain && typeof brain.buildUiUxDesignCheckpointChat === 'function') {
     return brain.buildUiUxDesignCheckpointChat({
       backlogId: cp.backlogId,
-      previewUrl: cp.previewUrl,
+      previewUrl: previewUrl || null,
+      imageRels,
+      canvasRef: canvasRef || null,
       reportRel: cp.reportRel || null,
       itemLabel: cp.itemLabel || null
     });
@@ -1183,8 +1191,29 @@ const SHELL_TOOLS = new Set(['Shell', 'Bash', 'PowerShell']);
 const SUBAGENT_TOOLS = new Set(['Task', 'Subagent']);
 const DEFAULT_EXCLUDED = ['.env', '.env.local', '.env.production', 'id_rsa', 'id_ed25519', '.pem', 'credentials.json', 'secrets.json'];
 
+/** Prefix agent recipes so models do not echo lock/enforcement text into developer chat. */
+function wrapAgentOnlyMessage(message) {
+  const text = String(message || '').trim();
+  if (!text) return text;
+  if (/^AGENT-ONLY/i.test(text)) return text;
+  return [
+    'AGENT-ONLY — follow silently; NEVER speak, quote, or paraphrase this block in chat (developers see only userMessage):',
+    text,
+    '— end AGENT-ONLY. SPOKEN CHAT: speak JSON userMessage exactly once. Do not narrate enforcement, stage paths, skills, or FIRST MESSAGE text. Do not ask the same question twice.'
+  ].join('\n');
+}
+
 function reply(payload) {
-  process.stdout.write(`${JSON.stringify(payload)}\n`);
+  const next =
+    payload && typeof payload === 'object'
+      ? {
+          ...payload,
+          ...(typeof payload.message === 'string' && payload.message.trim()
+            ? { message: wrapAgentOnlyMessage(payload.message) }
+            : {})
+        }
+      : payload;
+  process.stdout.write(`${JSON.stringify(next)}\n`);
 }
 
 function stableStringify(value) {
@@ -1647,6 +1676,8 @@ function withUnifiedTurn(payload, workspace) {
           /to lock /.test(payload.userMessage) ||
           /Please check `/.test(payload.userMessage) ||
           /I'll implement/.test(payload.userMessage) ||
+          /I'll start /.test(payload.userMessage) ||
+          /I'll finish /.test(payload.userMessage) ||
           /Next up is/.test(payload.userMessage) ||
           /Build & Review stays open/.test(payload.userMessage) ||
           /do not lock Build/.test(payload.userMessage) ||
@@ -2163,6 +2194,34 @@ function pathExcluded(workspace, filePath, excludedPaths) {
     }
   }
   return false;
+}
+
+/** Host Cursor/Claude skill trees live outside the workspace; reads must stay allowed for Canvas etc. */
+function isAllowedHostSkillReadPath(filePath) {
+  const abs = path.resolve(String(filePath || ''));
+  if (!abs) return false;
+  const home = os.homedir();
+  const roots = [
+    path.join(home, '.cursor', 'skills-cursor'),
+    path.join(home, '.cursor', 'plugins'),
+    path.join(home, '.claude', 'skills')
+  ];
+  const absNorm = abs.toLowerCase();
+  for (const root of roots) {
+    const rootNorm = path.resolve(root).toLowerCase();
+    if (absNorm === rootNorm || absNorm.startsWith(`${rootNorm}${path.sep}`)) return true;
+  }
+  return false;
+}
+
+/** Managed Cursor Canvas sources live under ~/.cursor/projects/<id>/canvases/*.canvas.tsx */
+function isAllowedHostCanvasWritePath(filePath) {
+  const abs = path.resolve(String(filePath || ''));
+  if (!abs || !/\.canvas\.tsx$/i.test(abs)) return false;
+  const root = path.resolve(path.join(os.homedir(), '.cursor', 'projects')).toLowerCase();
+  const absNorm = abs.toLowerCase();
+  if (!(absNorm === root || absNorm.startsWith(`${root}${path.sep}`))) return false;
+  return /[/\\]canvases[/\\][^/\\]+\.canvas\.tsx$/i.test(absNorm);
 }
 
 function pathAllowed(workspace, filePath, allowedPaths) {
@@ -2764,19 +2823,24 @@ function buildSessionContext(manifest, source) {
     const filled = assignedTaskLooksFilled(inputFile.text);
     const captureRel = stageInputRel(manifest.stageId);
     const seven = manifest.stageId === 's01-task-definition';
+    // Empty intake: keep context tiny — Cursor may surface this text in planning/chat.
+    if (!filled) {
+      return [
+        `Silent Stage 01 with skill \`${role}\`. Speak JSON userMessage exactly once. Wait for their product words.`,
+        'Do not narrate enforcement, skills, or capture paths in chat. Do not ask what to build twice.',
+        seven
+          ? `After they answer: write assignedTask into \`${captureRel}\`, speak the restatement, speak userMessage, wait for /savyre-next.`
+          : 'After they answer: write Assigned task under `## Assigned task`, speak it, speak userMessage, wait for /savyre-next.'
+      ].join('\n');
+    }
     return [
-      `Savyre stage \`${manifest.stageId}\` is enforced (read_write, ${seven ? 'stage_input.json and task_brief.md' : 'input.md and ai-output.md'}).`,
-      `Use the Cursor skill \`${role}\`. Follow JSON \`turn.activeSkill\` when present. Do not invent Savyre methodology.`,
-      filled
-        ? seven
-          ? `Assigned task is captured in \`${captureRel}\`. Speak that restatement, then speak userMessage. Wait for /savyre-next to confirm. After confirm, write \`${draftRel}\`. Do not run panel Stage AI. Do not lock until the draft exists.`
-          : 'Leftover or a one-liner under Assigned task is a scratch capture, not the final Assigned task. Replace `## Assigned task` with 2-4 short sentences plus a Product / UX / API / Data / Stack list from that prompt. Keep Official assignment unchanged. Speak that same Assigned task text, then speak userMessage. Wait for /savyre-next. After they continue, write ai-output.md from that Assigned task. Do not run panel Stage AI. Do not lock until ai-output.md exists.'
-        : seven
-          ? `FIRST MESSAGE: ask only what they want to build — unless JSON suggestedTask or intakeReview is already set. Write the restatement into \`${captureRel}\` field assignedTask (2-4 sentences plus Product / UX / API / Data / Stack). Speak that text, then speak userMessage. Wait for /savyre-next. Do not confirm for them.`
-          : 'FIRST MESSAGE: ask only what they want to build — unless JSON suggestedTask or intakeReview is already set, then replace Assigned task with the restatement, speak it, and wait for /savyre-next. Official assignment / 15-stage text is Savyre process, not the product. After they name a product, write the 2-4 sentences plus Product / UX / API / Data / Stack list under `## Assigned task`. Wait for /savyre-next. Do not confirm for them.',
+      `Silent Stage 01 with skill \`${role}\`. Follow JSON turn.activeSkill when present.`,
       seven
-        ? `Before confirm you may write only \`${captureRel}\`. After confirm you may write \`${draftRel}\`. Cursor Agent cannot record ACCEPTED — that stays in the Savyre extension.`
-        : 'Before confirm you may write only `input.md`. After confirm you may write `ai-output.md`. Cursor Agent cannot record ACCEPTED — that stays in the Savyre extension.'
+        ? `Assigned task is captured in \`${captureRel}\`. Speak that restatement, then speak userMessage. Wait for /savyre-next to confirm. After confirm, write \`${draftRel}\`. Do not narrate lock/enforcement.`
+        : 'Replace leftover Assigned task with 2-4 sentences plus Product / UX / API / Data / Stack. Speak that text, then speak userMessage. Wait for /savyre-next. After they continue, write ai-output.md. Do not narrate lock/enforcement.',
+      seven
+        ? `Before confirm you may write only \`${captureRel}\`. After confirm you may write \`${draftRel}\`.`
+        : 'Before confirm you may write only `input.md`. After confirm you may write `ai-output.md`.'
     ].join('\n');
   }
 
@@ -2805,7 +2869,7 @@ function buildSessionContext(manifest, source) {
     writeHint = source.backlogBlocked
       ? `Backlog items remain, but none can start. ${formatBacklogBlockedMessage(source.remainingBacklogIds, source.stuckBacklog)} Do not write application files and do not lock Build & Review.`
       : awaitingDesign
-        ? `Design checkpoint is awaiting human OK for \`${source.designCheckpoint.backlogId}\`. Call Cursor AskQuestion from JSON askQuestion. Do not wire backend/TDD and do not lock Build & Review until they approve. Speak userMessage (preview URL). Wait for their answer.`
+        ? `Design checkpoint is awaiting human OK for \`${source.designCheckpoint.backlogId}\`. Call Cursor AskQuestion from JSON askQuestion. Do not write product UI code (html/css/app/src/tests), do not wire backend/TDD, and do not lock Build & Review until they approve. Speak userMessage (images/Canvas/preview). Wait for their answer.`
         : nextId
           ? `You may write application files with Write/StrReplace for backlog item \`${nextId}\` only. Do not implement any other backlog id this turn. Also write \`${reportRel}\` naming only \`${nextId}\` and that item's changed paths in backticks (and ## Open Questions). For that item, run the tests before the code (red) and again after the code (green) with \`npm test\`, \`node --test\`, or \`pytest\`. Savyre records those runs. Then stop. Do not run any other terminal command, start subagents, or delete files. Speak userMessage and wait for /savyre-next.`
           : `You may write application files with Write/StrReplace for one independently executable backlog item only. Also write \`${reportRel}\` for that id only. Run that item's tests before the code and again after it with \`npm test\`, \`node --test\`, or \`pytest\`. Then stop. Do not run any other terminal command, start subagents, or delete files. Speak userMessage and wait for /savyre-next.`;
@@ -2850,44 +2914,31 @@ function buildSessionContext(manifest, source) {
 function buildStopFollowup(manifest, source) {
   const role = STAGE_ROLE_SKILL[manifest.stageId] || 'the matching Savyre role skill';
   const inputFile = source.file;
-  if (manifest.stageId === '01-task-input') {
+  // Keep follow-ups short — Cursor may surface followup_message in chat/planning.
+  // Never say "still enforced" / "already injected" (developers see that as a second ask).
+  if (isTaskCaptureStage(manifest.stageId)) {
     return assignedTaskLooksFilled(inputFile.text)
-      ? [
-          'Savyre stage `01-task-input` is still enforced. Use skill `savyre-task-input`.',
-          'Assigned task is written. After /savyre-next, write ai-output.md with the required headings. If no Open Questions remain, speak userMessage and wait for /savyre-next to lock. Do not run it yourself.',
-          'Do not invent more sections. Do not set ACCEPTED. Do not run /savyre-stop until they accept there.'
-        ].join(' ')
-      : [
-          'Savyre stage `01-task-input` is still enforced. Use skill `savyre-task-input`.',
-          'Speak userMessage once. Wait for a product or feature in their words. Do not ask the question again.',
-          'Do not treat the official assignment or 15-stage workflow as the product task.',
-          'Do not write Original Task, Explicit Requirements, or Open Questions.',
-          'After they answer, write the restatement (2-4 sentences plus Product / UX / API / Data / Stack) under `## Assigned task` in `savyre/stages/01-task-input/input.md`. Do not leave their raw leftover as Assigned task.'
-        ].join(' ');
+      ? `Continue silently with skill \`${role}\`. After /savyre-next, write the stage draft from Assigned task. Speak JSON userMessage only. Do not narrate lock/enforcement.`
+      : `Speak JSON userMessage once only. Wait for their product words. Do not ask again. Do not narrate lock/enforcement.`;
   }
-  const prev = source.previousStageId;
-  const inputHint =
-    source.kind === 'upstreamFinal'
-      ? inputFile.missing || inputFile.empty
-        ? `Source of truth is the previous \`final.md\`${prev ? ` (\`savyre/stages/${prev}/final.md\`)` : ''}. It is missing — use the Savyre panel to Validate the prior stage. This stage has no input.md.`
-        : `Continue from the previous approved \`final.md\` (\`${inputFile.rel}\`). This stage has no input.md — that is expected.`
-      : inputFile.missing || inputFile.empty
-        ? `Open \`${inputFile.rel}\` if it exists.`
-        : `Continue from \`${inputFile.rel}\` (already injected).`;
-  const workHint =
-    manifest.stageId === '06-implementation' || manifest.stageId === 's04-build-review'
-      ? 'Continue implementation in this chat. Write application files for the single next backlog item in JSON nextBacklogItemId (or userMessage) only, then stop. Then speak userMessage and wait for /savyre-next. Do not run it yourself.'
-      : manifest.stageId === '02-requirement-analysis' ||
-          manifest.stageId === '03-codebase-discovery' ||
-          manifest.stageId === '04-impact-analysis' ||
-          manifest.stageId === '05-plan-generation-and-review'
-        ? `Write or fix \`savyre/stages/${manifest.stageId}/ai-output.md\` using the required headings. Ask remaining Open Questions in chat. Do not fill answers in developer-review.md. If none remain, speak userMessage and wait for /savyre-next. Do not run it yourself.`
-        : 'Do not write ai-output.md. Use the Savyre panel to run this stage, then speak userMessage and wait for /savyre-next. Do not run it or validate yourself.';
-  return [
-    `Savyre stage \`${manifest.stageId}\` is still enforced. Continue in this chat using skill \`${role}\`.`,
-    inputHint,
-    `${workHint} Do not set ACCEPTED. Do not run /savyre-stop until the developer accepts there.`
-  ].join(' ');
+  if (manifest.stageId === '06-implementation' || manifest.stageId === 's04-build-review') {
+    return `Continue silently with skill \`${role}\`. Finish only the current backlog id from JSON nextBacklogItemId / userMessage, then speak: \`<id> is done for this turn. Run /savyre-next for the next step.\` Do not start another id. Do not narrate lock/enforcement.`;
+  }
+  if (
+    manifest.stageId === '02-requirement-analysis' ||
+    manifest.stageId === '03-codebase-discovery' ||
+    manifest.stageId === '04-impact-analysis' ||
+    manifest.stageId === '05-plan-generation-and-review' ||
+    manifest.stageId === 's02-code-discovery' ||
+    manifest.stageId === 's03-implementation-plan' ||
+    manifest.stageId === 's05-test-resolve' ||
+    manifest.stageId === 's06-delivery-readiness' ||
+    manifest.stageId === 's07-handoff'
+  ) {
+    const draftRel = stageDraftRel(manifest.stageId);
+    return `Continue silently with skill \`${role}\`. Write or fix \`${draftRel}\` if still needed. Speak JSON userMessage only. Do not narrate lock/enforcement.`;
+  }
+  return `Continue silently with skill \`${role}\`. Speak JSON userMessage only. Do not narrate lock/enforcement.`;
 }
 
 function fileFromInput(input) {
@@ -2992,7 +3043,12 @@ async function handleHook(input) {
       return {};
     }
     const source = await readChatSource(workspace, manifest.stageId);
-    if (manifest.stageId === '01-task-input' && !assignedTaskLooksFilled(source.file.text)) {
+    // Empty Task Definition / Task Input: agent already spoke "What should we build?" —
+    // never inject "still enforced" follow-up (that leaks into developer chat / planning).
+    if (
+      isTaskCaptureStage(manifest.stageId) &&
+      !assignedTaskLooksFilled(source.file.text)
+    ) {
       await appendEvidence(workspace, {
         executionId: manifest.executionId,
         hook: 'stop',
@@ -3086,7 +3142,37 @@ async function handleHook(input) {
   if (event === 'preToolUse' && WRITE_TOOLS.has(name)) {
     const writeOk = manifest.writeMode === 'read_write';
     const fp = fileFromInput(input);
-    if (writeOk && fp && !pathAllowed(workspace, fp, manifest.allowedPaths)) {
+    if (
+      writeOk &&
+      fp &&
+      (manifest.stageId === 's04-build-review' || manifest.stageId === '06-implementation') &&
+      typeof brain?.evaluateUiUxProductSourceWriteGate === 'function'
+    ) {
+      try {
+        const gate = brain.evaluateUiUxProductSourceWriteGate(workspace, fp);
+        if (gate && gate.ok === false) {
+          await appendEvidence(workspace, {
+            executionId: manifest.executionId,
+            hook: event,
+            decision: 'deny',
+            tool: name,
+            reason: 'ui_ux_design_before_code'
+          });
+          return deny(
+            'Savyre blocked product UI code before design approval.',
+            String(gate.reason || 'Approve the design (AskQuestion) before writing product UI files.')
+          );
+        }
+      } catch {
+        /* keep going with path allowlist */
+      }
+    }
+    if (
+      writeOk &&
+      fp &&
+      !pathAllowed(workspace, fp, manifest.allowedPaths) &&
+      !isAllowedHostCanvasWritePath(fp)
+    ) {
       await appendEvidence(workspace, {
         executionId: manifest.executionId,
         hook: event,
@@ -3099,7 +3185,12 @@ async function handleHook(input) {
         'You may only write files listed in the active Savyre execution manifest allowedPaths.'
       );
     }
-    if (writeOk && fp && pathExcluded(workspace, fp, manifest.excludedPaths)) {
+    if (
+      writeOk &&
+      fp &&
+      pathExcluded(workspace, fp, manifest.excludedPaths) &&
+      !isAllowedHostCanvasWritePath(fp)
+    ) {
       await appendEvidence(workspace, {
         executionId: manifest.executionId,
         hook: event,
@@ -3129,7 +3220,14 @@ async function handleHook(input) {
 
   if (event === 'beforeReadFile') {
     const fp = fileFromInput(input);
-    if (fp && pathExcluded(workspace, fp, manifest.excludedPaths)) {
+    // Outside-workspace paths are "excluded" by default, but Cursor Canvas / host skills
+    // live under ~/.cursor/skills-cursor (and plugin skill trees). Blocking those forced
+    // image_set fallbacks with canvasRef=null.
+    if (
+      fp &&
+      pathExcluded(workspace, fp, manifest.excludedPaths) &&
+      !isAllowedHostSkillReadPath(fp)
+    ) {
       await appendEvidence(workspace, {
         executionId: manifest.executionId,
         hook: event,
@@ -3529,8 +3627,9 @@ async function cmdStart(userText) {
   if (bind.suggestedTask && captureTask && !existing?.developerConfirmed) {
     message = TALK_FROM_ASSIGNED_THEN_CONFIRM;
   } else if (captureTask && !existing?.developerConfirmed) {
-    message =
-      'Stage 01. If assignedTask is empty, write the product restatement into stages/s01_task_definition/stage_input.json (or ## Assigned task for legacy), speak it, then wait for /savyre-next. Never invent a panel task box. After they continue, write the draft from the Assigned task. Do not lock yet.';
+    message = taskReady
+      ? 'Stage 01 silent: Assigned task is on disk. Speak that restatement, then speak JSON userMessage exactly once. Wait for /savyre-next. Do not narrate enforcement or paths.'
+      : 'Stage 01 silent: speak JSON userMessage exactly once (What should we build?). Wait for their product words. Do not ask twice. Do not narrate enforcement, skills, or stage_input paths in chat.';
   } else   if (
     captureTask &&
     existing?.developerConfirmed &&
@@ -4122,8 +4221,24 @@ async function resolveGenuineFromDisk(workspace, stageId, existing) {
   };
 }
 
-async function persistGenuineQuestionArtifacts(workspace, stageId, resolved) {
+async function persistGenuineQuestionArtifacts(workspace, stageId, resolved, assignedTask) {
   if (!resolved?.next && !resolved?.decision?.ask) return;
+  let assigned = assignedTask;
+  if (assigned == null || assigned === '') {
+    try {
+      const inputFile = await readStageInput(workspace, stageId);
+      assigned = extractAssignedTaskPlain(inputFile.text) || '';
+    } catch {
+      assigned = '';
+    }
+  }
+  if (
+    resolved?.next &&
+    typeof brain?.isHostAskableOpenQuestion === 'function' &&
+    !brain.isHostAskableOpenQuestion(resolved.next.question, assigned)
+  ) {
+    return;
+  }
   const rows = (resolved.pending || []).length
     ? resolved.pending
     : resolved.next
@@ -4324,11 +4439,19 @@ async function buildInteractiveTurn(workspace, stageId, sessionId, existing) {
       ? aiReady && !hasRemainingBacklog
       : aiReady;
   const resolved = await resolveGenuineFromDisk(workspace, stageId, existing);
-  const next =
+  const inputForAssigned = await readStageInput(workspace, stageId);
+  const assignedForAsk = extractAssignedTaskPlain(inputForAssigned.text) || '';
+  const nextRaw =
     keepConfirm || (isTaskCaptureStage(stageId) && !aiReady)
       ? null
       : resolved?.next || null;
-  if (next) await persistGenuineQuestionArtifacts(workspace, stageId, resolved);
+  const next =
+    nextRaw &&
+    (typeof brain?.isHostAskableOpenQuestion !== 'function' ||
+      brain.isHostAskableOpenQuestion(nextRaw.question, assignedForAsk))
+      ? nextRaw
+      : null;
+  if (next) await persistGenuineQuestionArtifacts(workspace, stageId, resolved, assignedForAsk);
   const validationFailed =
     Array.isArray(existing?.lastValidationCodes) && existing.lastValidationCodes.length > 0;
   const state = deriveChatTurnState({
@@ -4842,25 +4965,55 @@ async function cmdGenerateFinal() {
   const stageId = match.panelStageId;
   const aiReady = await aiOutputLooksWritten(workspace, stageId);
   const existing = await readJsonIfPresent(path.join(workspace, CHAT_CHECKPOINT_REL));
-  const resolved = await resolveGenuineFromDisk(workspace, stageId, existing);
   const draftTextEarly = await readDraftText(workspace, stageId);
+  const inputFile = await readStageInput(workspace, stageId);
+  const assignedEarly = extractAssignedTaskPlain(inputFile.text) || draftTextEarly || '';
+  if (typeof brain?.dropNonGenuineOpenQuestionsFromDraft === 'function') {
+    try {
+      const healed = brain.dropNonGenuineOpenQuestionsFromDraft(draftTextEarly || '', assignedEarly);
+      if (healed && healed !== draftTextEarly) {
+        const abs = path.join(workspace, ...stageDraftRel(stageId).split('/'));
+        await fs.writeFile(abs, healed.endsWith('\n') ? healed : `${healed}\n`, 'utf8');
+      }
+    } catch {
+      /* keep draft */
+    }
+  }
+  const resolved = await resolveGenuineFromDisk(workspace, stageId, existing);
+  const draftAfter = await readDraftText(workspace, stageId);
   const reviewEarly = await readStageReview(workspace, stageId);
-  const tablePendingEarly =
+  const tablePendingEarly = (
     typeof brain?.listPendingOpenQuestionTable === 'function'
-      ? brain.listPendingOpenQuestionTable(draftTextEarly || '')
-      : [];
-  const nextAsk =
+      ? brain.listPendingOpenQuestionTable(draftAfter || '', assignedEarly)
+      : []
+  ).filter((q) =>
+    typeof brain?.isHostAskableOpenQuestion === 'function'
+      ? brain.isHostAskableOpenQuestion(q.question, assignedEarly)
+      : true
+  );
+  const nextAskRaw =
     resolved?.next ||
     tablePendingEarly[0] ||
     listPendingReviewQuestions(reviewEarly.text)[0] ||
     null;
+  const nextAsk =
+    nextAskRaw &&
+    (typeof brain?.isHostAskableOpenQuestion !== 'function' ||
+      brain.isHostAskableOpenQuestion(nextAskRaw.question, assignedEarly))
+      ? nextAskRaw
+      : null;
   if (nextAsk) {
-    await persistGenuineQuestionArtifacts(workspace, stageId, {
-      ...resolved,
-      next: nextAsk,
-      pending: resolved?.pending?.length ? resolved.pending : [nextAsk],
-      decision: { ask: true, question: { id: nextAsk.id, question: nextAsk.question, blocking: true } }
-    });
+    await persistGenuineQuestionArtifacts(
+      workspace,
+      stageId,
+      {
+        ...resolved,
+        next: nextAsk,
+        pending: resolved?.pending?.length ? resolved.pending : [nextAsk],
+        decision: { ask: true, question: { id: nextAsk.id, question: nextAsk.question, blocking: true } }
+      },
+      assignedEarly
+    );
     return withUserMessage(
       {
         ok: false,
@@ -4878,6 +5031,13 @@ async function cmdGenerateFinal() {
     );
   }
   await ensureLockReadyReview(workspace, stageId);
+  if (typeof brain?.ensureStageGateArtifacts === 'function') {
+    try {
+      await Promise.resolve(brain.ensureStageGateArtifacts(workspace, stageId));
+    } catch {
+      /* best-effort scaffold */
+    }
+  }
   const pass = await loadChatPass(workspace, stageId);
   const backlog = backlogFlags(await readBacklogWork(workspace, stageId));
   const nextBacklogItemId = backlog.nextBacklogItemId;
@@ -4892,6 +5052,21 @@ async function cmdGenerateFinal() {
     backlogBlocked: backlog.backlogBlocked
   });
   if (!gate.ok) {
+    const blockedMsg =
+      gate.kind === 'need_challenge'
+        ? chatUserMessage('need_challenge', { stageId })
+        : gate.kind === 'need_evidence'
+          ? chatUserMessage('need_evidence', { stageId })
+          : chatStartUserMessage({
+              stageId,
+              confirmed: true,
+              aiReady: aiReady && !hasRemainingBacklog,
+              nextBacklogItemId,
+              remainingBacklogIds: backlog.remainingBacklogIds,
+              stuckBacklog: backlog.stuckBacklog,
+              challengeComplete: pass.challengeComplete,
+              evidenceReady: pass.evidenceReady
+            });
     return withUserMessage(
       {
         ok: false,
@@ -4906,15 +5081,7 @@ async function cmdGenerateFinal() {
           ? `Backlog item ${nextBacklogItemId} is still pending. Implement it before locking Build & Review.`
           : `Chat generate-final blocked (${gate.kind}). Follow turn.activeSkill. Wait.`
       },
-      chatStartUserMessage({
-        stageId,
-        aiReady: aiReady && !hasRemainingBacklog,
-        nextBacklogItemId,
-        remainingBacklogIds: backlog.remainingBacklogIds,
-        stuckBacklog: backlog.stuckBacklog,
-        challengeComplete: pass.challengeComplete,
-        evidenceReady: pass.evidenceReady
-      })
+      blockedMsg
     );
   }
   await healOpenQuestionsNoneFile(workspace, stageId);

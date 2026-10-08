@@ -8,7 +8,7 @@
   "expiresAt": "2099-01-01T00:00:00.000Z",
   "singleUse": true,
   "writeMode": "read_write",
-  "allowedTools": ["Read", "Grep", "Glob", "SemanticSearch", "Write", "StrReplace"],
+  "allowedTools": ["Read", "Grep", "Glob", "SemanticSearch", "Write", "StrReplace", "AskQuestion"],
   "deniedTools": ["Delete", "Shell", "Task"],
   "allowedPaths": [
     "savyre/stages/01-task-input/input.md",

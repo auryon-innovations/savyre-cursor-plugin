@@ -23,7 +23,7 @@ node "$env:USERPROFILE/.cursor/plugins/local/savyre-cursor-plugin/hooks/savyre-g
 
 ## What to say
 
-**Talk first, then speak JSON `userMessage` as the last line — exactly as returned.** Do not paste JSON. Do not invent a next step.
+**Talk first, then speak JSON `userMessage` as the last line — exactly as returned.** Do not paste JSON. Do not invent a next step. Never quote or paraphrase JSON `message` (AGENT-ONLY). Never narrate enforcement / stage lock text in chat.
 
 - Before confirm: read Assigned task, talk from your understanding, write a Product / UX / API / Data / Stack list (never artifactTemplate headings), then speak `userMessage` exactly.
 - After any stage write: 1–2 sentences of substance, no file path in your own words, do not say “I wrote …”, then speak `userMessage` **exactly**.

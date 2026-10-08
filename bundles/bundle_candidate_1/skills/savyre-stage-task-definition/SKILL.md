@@ -3,7 +3,7 @@ name: savyre-stage-task-definition
 description: "Define and analyze a software task in Savyre S01 or an explicitly requested task-brief preview, returning requirements, applicable user stories and acceptance criteria for one final confirmation. Use for intake clarification and requirement challenge; not technical planning, code changes or delivery acceptance."
 ---
 
-# S01 — Task Definition
+# S01 â€” Task Definition
 
 ## Boundary and inputs
 Read `references/runtime-boundary.md` before managed or preview work. This package is a primary stage skill; compatible internal reusable roles assist it but do not replace its owner. In managed mode, check the verified active stage matches S01; mismatched/legacy context needs runtime mapping, not silent bypass.
@@ -27,9 +27,9 @@ Read `references/invocation-map.md` before selecting a dedicated/shared pass. S0
 
 Same behavior in Cursor Agent and Claude Code. When managed Chat has this stage enforced:
 
-1. As soon as the developer names the product (chat message or leftover after `/savyre-start`), write a 2–4 sentence restatement plus Product / UX / API / Data / Stack (only supported headings) as `assignedTask` in `stages/s01_task_definition/stage_input.json` (JSON is the SoT; runtime regenerates the `stage_input.md` companion).
-2. Speak that same restatement, then speak JSON `userMessage` exactly. Confirm copy names `stages/s01_task_definition/stage_input.md` — never tell the developer to confirm `stage_input.json`. Wait for `/savyre-next` to confirm. Do **not** write `task_brief.md` before confirm.
-3. After confirm, write `task_brief.md`, run `turn`. When `turn.activeSkill` becomes `savyre.requirement-challenge`, **in the same agent turn** write `stages/s01_task_definition/challenge_findings.json` (`schemaVersion` `"1.0"`, `findings` array — empty OK), run `turn` again, then speak `userMessage` exactly (AC approve + `/savyre-next` to lock).
+1. As soon as the developer names the product (chat message or leftover after `/savyre-start`), write a 2â€“4 sentence restatement plus Product / UX / API / Data / Stack (only supported headings) as `assignedTask` in `stages/s01_task_definition/stage_input.json` (JSON is the SoT; runtime regenerates the `stage_input.md` companion).
+2. Speak that same restatement, then speak JSON `userMessage` exactly. Confirm copy names `stages/s01_task_definition/stage_input.md` â€” never tell the developer to confirm `stage_input.json`. Wait for `/savyre-next` to confirm. Do **not** write `task_brief.md` before confirm.
+3. After confirm, write `task_brief.md`, run `turn`. When `turn.activeSkill` becomes `savyre.requirement-challenge`, **in the same agent turn** write `stages/s01_task_definition/challenge_findings.json` (`schemaVersion` `"1.0"`, `findings` array â€” empty OK), run `turn` again, then speak `userMessage` exactly (AC approve + `/savyre-next` to lock).
 4. Never invent a Savyre panel task box, Send button, or panel Validate step. Chat has no panel capture UI.
 5. `/savyre-next` confirms only when `assignedTask` is non-empty. A filled `task_brief.md` alone is not enough. Lock also needs `challenge_findings.json` on disk.
 
@@ -41,14 +41,14 @@ Same behavior in Cursor Agent and Claude Code. When managed Chat has this stage 
    ```
    <question>?
    Options:
-   1) …
-   2) …
-   3) …
+   1) â€¦
+   2) â€¦
+   3) â€¦
    ```
-   Present those options with Cursor `AskQuestion` (clickable single-select, ids `1`/`2`/`3`) so the developer can tap a choice. After they click, run `/savyre-answer`. If the picker is unavailable, use the multiline `Options:` block — never flatten to one line. Options must be concrete product/behavior alternatives for *this* app (e.g. “Create/edit/delete notes”, “Shared lists”, “Offline personal only”) — **never** bare `Yes` / `No`. Option 3 may be “Something else (I will type it)” only as an escape hatch after two real product choices.
-3a. **Product scope rule (Chat):** If the original task is a high-level product name without concrete user-visible behavior, you **must** put one blocking Open Question on minimum functionality in `task_brief.md` with **three product-scope options** (different MVP feature sets for this product) and wait for `/savyre-answer`. Do not invent add/edit/delete/persist (or similar) as decided facts to avoid asking.
+   Present those options with Cursor `AskQuestion` (clickable single-select, ids `1`/`2`/`3`) so the developer can tap a choice. After they click, run `/savyre-answer`. If the picker is unavailable, use the multiline `Options:` block â€” never flatten to one line. Options must be concrete product/behavior alternatives for *this* app (e.g. â€œCreate/edit/delete notesâ€, â€œShared listsâ€, â€œOffline personal onlyâ€) â€” **never** bare `Yes` / `No`. Option 3 may be â€œSomething else (I will type it)â€ only as an escape hatch after two real product choices.
+3a. **Open Question rule (Chat):** Ask **only** when the developer left a real undecided product decision in the prompt (or a challenge finding needs one). Runtime will drop canned/generic MVP rows and will not call AskQuestion for them. Never invent canned scope stems or paraphrases — including "minimum user-visible functionality", "one product decision before we continue", "core items plus sharing/collaboration", browse-only vs My List, or generic CRUD/MVP options. When you must ask, phrase the question from the prompt and give **three prompt-specific** choose options (plus Something else only if needed), and call Cursor `AskQuestion` (do not print Options in chat when the picker payload is present). If the prompt already locks scope (e.g. UI-only, front-end UI only, no auth, no backend/servers, mock data), write **No open questions identified**, finish the brief, and tell them to run `/savyre-next` — do not invent a product-decision MCQ.
 3b. **Production-level contract:** Prefer real-user AC plus NFRs when needed (authz, secrets, input validation, a11y, basic perf, privacy). Target a production-level app, not a demo sketch. Do not require deploy/ops runbooks.
-3c. **UI / visual design:** If the repo already has app UI, plan to **match that theme**. If greenfield and the user gave no colors/theme/reference, ask **one** OQ for preferred colors, light vs dark, or a reference app; if they decline or say decide for you, accept the **default polished UI bar** (hierarchy, spacing, coherent colors, consistent components, empty/loading/error states, responsive primary pages). Do **not** browse the web to copy competitor UIs.
+3c. **UI / visual design:** Record UI scope, users, behaviors, and stack constraints in the brief. If the repo already has app UI, plan to **match that theme**. If greenfield and the user gave no colors/theme/reference, ask **one** OQ for preferred colors, light vs dark, or a reference app; if they decline or say decide for you, accept the **default polished UI bar** (hierarchy, spacing, coherent colors, consistent components, empty/loading/error states, responsive primary pages). Do **not** browse the web to copy competitor UIs.
 4. Revise analyzed brief after answers, then request one final confirmation of the current complete contract. **Call out Acceptance Criteria by ID** and ask the developer to approve that exact AC set before lock. Reopened scope creates a new draft/revision.
 
 ## Output contract
@@ -58,7 +58,7 @@ Draft sections: **Original Task; Understanding; Requirements; User Stories (if a
 
 Required supporting content: Original text; stable requirement/story/criterion/source links; constraints/exclusions; confirmed decisions and explicitly accepted assumptions; runtime confirmation/final revision refs. Preview payload has no fabricated approved state.
 
-Confirmation boundary: After the draft lists every active **AC-###**, speak `userMessage` and explicitly ask the developer to **approve those acceptance criteria** (exact wording/IDs), not only the overall brief. One final S01 task-contract confirmation after analysis/challenge; no confirmation is implied by the draft. Chat cannot stamp approval or unlock the stage. In your own 1–2 substance sentences before `userMessage`, name the AC IDs (e.g. AC-001…AC-00N) and ask whether that set is approved.
+Confirmation boundary: After the draft lists every active **AC-###**, speak `userMessage` and explicitly ask the developer to **approve those acceptance criteria** (exact wording/IDs), not only the overall brief. One final S01 task-contract confirmation after analysis/challenge; no confirmation is implied by the draft. Chat cannot stamp approval or unlock the stage. In your own 1â€“2 substance sentences before `userMessage`, name the AC IDs (e.g. AC-001â€¦AC-00N) and ask whether that set is approved.
 
 Final handoff: After required task confirmation/validation, runtime publishes final.md and contract projection for S02/S03. Unanswered material question remains unapproved.
 

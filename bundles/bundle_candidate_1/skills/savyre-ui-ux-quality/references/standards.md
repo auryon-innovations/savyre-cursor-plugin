@@ -14,3 +14,18 @@ Evaluate the affected journey against the brief; do not redesign unrelated areas
 Reference precedence: explicit instructions, approved designs/design system, existing app conventions, then documented defaults. Resolve consequential conflicts before dependent work; decide minor preferences consistently.
 
 For new interfaces without references, establish type scale, spacing, color roles, component treatment and responsive behavior. A component library does not substitute for a coherent visual direction.
+
+## Hi-fi design bar (default for substantial new screens)
+
+Clients should not need a designer prompt for a clear first mockup. For **substantial new screens** or media-heavy browse/hero UIs, default to a **production-like** proposal before AskQuestion — not a gray wireframe.
+
+**Medium order (required):**
+
+1. **Cursor Canvas first** when the session supports it (`treatment: canvas`, `designMedium: canvas`). Persist `designBrief` / `designSpecification`. Do not skip to PNG/`preview.html` while Canvas works.
+2. **Images only if Canvas is unavailable** — record a tool fallback, then PNG (and optional `preview.html`) under `tasks/<id>/design/`.
+3. **One clear visual direction** — background, accent, type hierarchy (strong display title, muted meta), spacing rhythm. If the Assigned task names a known product or reference, match that look; otherwise invent one coherent direction and stick to it.
+4. **No placeholder tiles** — do not stop with empty gray rectangles for posters, cards, or heroes. Use real imagery when the UI shows media.
+5. **Show before AskQuestion** — for Canvas: point the developer at Canvas + saved spec; for images: Read PNG(s) into chat and link `preview.html` if present. Then call AskQuestion (do not only print the question).
+6. **Desktop + mobile** when the product is a responsive client UI — both must look production-like.
+
+Small edits (`designScope: small_edit`, `designCheckpoint: not_required`) skip this bar. Backend-only work skips design entirely.

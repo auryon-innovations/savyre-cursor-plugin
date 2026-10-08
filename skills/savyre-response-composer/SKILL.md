@@ -13,7 +13,7 @@ This skill rides along on every Savyre stage. Savyre owns the next slash. You ow
 
 **OPEN QUESTIONS — only when runtime says so (hard rule):**
 
-- Call Cursor `AskQuestion` **ONLY** when JSON `askQuestion` / `composer.askQuestion` is set, or `intervention.ask` is true with a pending OQ.
+- When JSON `askQuestion` / `composer.askQuestion` is set (or `intervention.ask` is true with a pending OQ and `forbidAskQuestion` is not true), you **MUST** call Cursor `AskQuestion` as your next tool action before any other reply.
 - If `askQuestion` is absent/null, or `forbidAskQuestion` is true, or `intervention.ask` is false, or the OQ id is in `resolvedOpenQuestionIds` — **do NOT** call AskQuestion (not even if the user says “ask again”). Use the recorded answer and continue the stage.
 - When AskQuestion is allowed:
   1. Next tool call must be Cursor `AskQuestion` (single-select). Prefer JSON `askQuestion` payload. Else option ids `1`/`2`/`3`; product-specific labels; prompt = stem only.

@@ -24,6 +24,6 @@ Inputs: Analyzed task_brief draft, exact original task, proposed requirements/st
 ## Output and handoff
 Findings with summary, sourceRefs/requirementRefs, blocking, consequence and proposed clarification; runtime questionRef when supplied. Empty findings is valid.
 
-Artifact ownership: In managed Chat (Cursor Agent or Claude Code), when `turn.activeSkill` is `savyre.requirement-challenge`, **you are the delegated writer** for `challenge_findings.json` / `challenge-findings.json`. Speaking the review without writing that file leaves the stage blocked. Then run `turn` and speak `userMessage` exactly (usually AC review + `/savyre-next` to lock).
+Artifact ownership: In managed Chat (Cursor Agent or Claude Code), when `turn.activeSkill` is `savyre.requirement-challenge`, **you are the delegated writer** for `challenge_findings.json` / `challenge-findings.json`. Prefer writing a real challenge pass; if the host already scaffolded an empty clean-pass file, you may refine findings and then continue. Speaking the review without that file on disk leaves the stage blocked. Then run `turn` and speak `userMessage` exactly (usually AC review + `/savyre-next` to lock). Never invent the canned minimum-functionality AskQuestion when the assigned task already locks UI/auth/backend scope.
 
 Return to the assigned primary/runtime without recursively dispatching yourself or pretending an unavailable role/tool ran. Preserve developer feedback and canonical state. A clean analysis is advisory; current runtime permits/completes actions.

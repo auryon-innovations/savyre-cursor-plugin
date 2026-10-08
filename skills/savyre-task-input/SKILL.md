@@ -21,7 +21,7 @@ Use JSON `artifactTemplate` from `/savyre-start` for `ai-output.md` headings. Do
 
 - `userMessage` is the next slash. Do not paste JSON, hashes, `continuation`, or Official assignment.
 - Before confirm: write the restatement to Assigned task, speak that same restatement, then speak `userMessage` (`/savyre-next` to confirm). Do not list Original Task or other `ai-output.md` headings in chat.
-- After confirm: write a complete `ai-output.md` / `task_brief.md`, run `turn` immediately. If `userMessage` / `askQuestion` is an open question: call Cursor `AskQuestion` next (do not print Options text), then after click run `/savyre-answer`. Otherwise speak 1–2 sentences and `userMessage`. Scope OQs must offer three concrete MVP feature-set options (e.g. create/edit/delete notes only / notes plus shared lists / offline personal with sync later) — never Yes/No or truncated question stems. Do not speak a lock line while a question is pending.
+- After confirm: write a complete `ai-output.md` / `task_brief.md`, run `turn` immediately. If `userMessage` / `askQuestion` is an open question: you **MUST** call Cursor `AskQuestion` next (do not print Options text), then after click run `/savyre-answer`. Otherwise speak 1–2 sentences and `userMessage`. Scope OQs must offer three concrete MVP feature-set options (e.g. create/edit/delete notes only / notes plus shared lists / offline personal with sync later) — never Yes/No or truncated question stems. Do not speak a lock line while a question is pending.
 - If Assigned task is empty and there is no leftover: ask what to build once, then wait.
 - Continue steps are `/savyre-next`. Do not run lock or the next stage yourself.
 

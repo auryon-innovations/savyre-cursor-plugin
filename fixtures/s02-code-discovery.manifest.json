@@ -8,11 +8,12 @@
   "expiresAt": "2099-01-01T00:00:00.000Z",
   "singleUse": true,
   "writeMode": "read_write",
-  "allowedTools": ["Read", "Grep", "Glob", "SemanticSearch", "Write", "StrReplace"],
+  "allowedTools": ["Read", "Grep", "Glob", "SemanticSearch", "Write", "StrReplace", "AskQuestion"],
   "deniedTools": ["Delete", "Shell", "Task"],
   "allowedPaths": [
     "stages/s02_code_discovery/codebase_impact_report.md",
-    "stages/s02_code_discovery/discovery_evidence.json"
+    "stages/s02_code_discovery/discovery_evidence.json",
+    "stages/s02_code_discovery/evidence-map.json"
   ],
   "excludedPaths": [".env", ".env.local", ".env.production", "id_rsa", "id_ed25519", "*.pem", "credentials.json", "secrets.json"],
   "evidenceRequired": true,

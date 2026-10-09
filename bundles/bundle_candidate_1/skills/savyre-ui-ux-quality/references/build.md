@@ -1,26 +1,25 @@
 # Build mode
 
-For user-facing work, design exploration is **proportionate**. **Cursor Canvas is first** for substantial new screens. Apply the **hi-fi design bar** in `standards.md` — clients should not need a custom prompt for a clear mockup.
+For user-facing work, design exploration is **proportionate**. **Interactive `preview.html` is first** for substantial new screens. Apply the **hi-fi design bar** in `standards.md` — clients should not need a custom prompt for a clear mockup.
 
 1. Identify the affected journey, requirements, and permitted changes. Inspect the **target package** stack before proposing components. Record a **component strategy** (reuse existing / extend shadcn / introduce shadcn only for new unconstrained React / other stack / explicit migration).
 2. Select mockup treatment:
-   - Substantial new screen: **must try Cursor Canvas first** (`treatment: canvas`, `designMedium: canvas`) when the session supports it. Persist `designSpecification` + `designBrief`. `canvasRef` is optional extra. Canvas proposals must be production-like (hierarchy, direction, no gray placeholder content).
+   - Substantial new screen: **interactive `preview.html`** (`treatment: image_set`, `designMedium: images`). Persist `designSpecification` + `designBrief`. Meet the **preview.html bar** in `standards.md` (clickable pages plus the real visual design). Do not use Cursor Canvas for this approval.
    - Small spacing/label correction: `treatment: none`, `designCheckpoint: not_required` — implement directly with existing conventions.
-   - **Only if Canvas is unavailable** (record a tool fallback): hi-fi `image_set` under `tasks/<id>/design/` (PNG + optional `preview.html`). Do not choose images while Canvas works. Do not stop at SVG wireframes.
    - Backend-only: skip (`not_applicable`; `designCheckpoint: not_required`; `designMedium: none`).
 3. **Do not** introduce React, shadcn, Tailwind, or a second library solely to enable this workflow. Existing apps reuse their library. shadcn MCP may **discover/install** only on authorized S04 writes, after inspecting local variants. If MCP is down, use installed components.
-4. **Canvas path (default for substantial UI)** before AskQuestion:
-   - Open / build the proposal in Cursor Canvas (Design Mode when available).
-   - Persist portable `designBrief` / `designSpecification` so work resumes if Canvas is gone.
-   - Write `ui_ux_report.json` with `treatment: canvas`, `designMedium: canvas`, `designCheckpoint: awaiting_human`.
-   - Call Cursor AskQuestion NOW (Approve / Request changes / Something else). Do not only print the question.
-5. **Image-set fallback** (Canvas unavailable only) before AskQuestion:
-   - Write PNG(s) under `stages/s04_build_review/tasks/<id>/design/` (optional `preview.html` for browser-openable mock — design-phase only, not product `index.html`).
-   - Real/CDN imagery when the UI shows media; no gray placeholder tiles.
-   - List `designImageRels` on the report; Read PNGs into chat; then AskQuestion.
-6. For Canvas/image proposals, write `ui_ux_report.json` + companion `.md` with `artifactType: "ui_ux_report"`, set `designCheckpoint: awaiting_human`, and **stop**. **Do not** write product UI files (`index.html`, `styles.css`, `app/`, `src/`, Playwright specs) in the same turn. The host blocks those paths until Approve. Canvas like ≠ implementation acceptance ≠ stage unlock.
-7. After design OK (or skip for small edits): implement complete screens (layout, states, real routes/services). Simulated actions are not complete unless the task asked for a prototype.
-8. Then AC TDD and `mode=review` with live browser preview (`CHK-BROWSER-PREVIEW`). Canvas/images never satisfy function/browser review.
-9. Record source binding, strategy, design decisions, verification, and fallbacks.
+4. **`preview.html` path (default for substantial UI)** before AskQuestion:
+   - Before any HTML or CSS, write a complete `designBrief`: product and users, one visual direction, how each color is used, type hierarchy and font choices, section order, imagery and placement, component appearance and interaction states, first-viewport priorities, and narrow versus wide layout. Do not start HTML until that brief is complete. Do not ask the user to approve the brief. Composition follows the product: a shop leads with products and photography; a dashboard leads with readable metrics, not identical cards; a portfolio leads with identity, type, and work samples; other products follow the task.
+   - Write `stages/s04_build_review/tasks/<id>/design/preview.html` with HTML and custom CSS. It is design-phase only, not product `index.html`. Do not use React, Tailwind, or shadcn for this file.
+   - The page is a senior product designer’s finished screen: one type scale, one spacing scale, named color roles, real photos, real product names and prices, clickable behavior (page switches, search, filters), and empty, loading, and error states at 390px and 1440px. The width control restacks the frame (narrow is one column, wide uses the extra room, images stay inside the frame, no sideways scroll). A browser media query alone does not pass. The first view shows the main action. One focal point and more than one kind of region, not the same card grid repeated. The headline is clearly larger than the body. Controls change on hover, press, and focus, with a short transition on page, width, and state changes, honoring reduced motion. No gray tiles, no three identical feature cards, no purple gradient, no filler headlines. “Premium”, “modern”, or “pro” do not pass unless those checks are on the screen.
+   - Save PNG stills of the same pages in that `design/` folder. List `preview.html` and the PNGs in `designImageRels`.
+   - Persist portable `designBrief` / `designSpecification`.
+   - Read the PNGs at both widths. Check them against the brief and the UI `AC-###`. Revise at most twice. If major defects remain, list them in the report. Do not hide them.
+   - Write `ui_ux_report.json` with `treatment: image_set`, `designMedium: images`, `designCheckpoint: awaiting_human` only after that review.
+   - Link `preview.html` for the browser, then call Cursor AskQuestion NOW (Approve / Request changes / Something else). Do not only print the question. Do not skip AskQuestion. Do not ask for approval of a static card stack, a shrunk desktop grid, or a Canvas shell.
+5. For this proposal, write `ui_ux_report.json` + companion `.md` with `artifactType: "ui_ux_report"`, set `designCheckpoint: awaiting_human`, and **stop**. **Do not** write product UI files (`index.html`, `styles.css`, `app/`, `src/`, Playwright specs) in the same turn. The host blocks those paths until Approve. Preview OK is not implementation acceptance and is not stage unlock.
+6. After design OK (or skip for small edits): implement that backlog item’s screens from the approved preview. Keep its type, color, spacing, photos, words, section order, layout, and motion. Do not simplify it into a generic component layout. Simulated actions are not complete unless the task asked for a prototype.
+7. Then AC TDD and `mode=review` with live browser preview (`CHK-BROWSER-PREVIEW`). `preview.html` and PNGs never satisfy function/browser review.
+8. Record source binding, strategy, design decisions, verification, and fallbacks.
 
 Cost control: affected screens only, existing tokens/components, one direction, bounded refinement. Track activity under existing build usage records.

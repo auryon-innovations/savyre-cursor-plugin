@@ -25,6 +25,10 @@ Read `references/invocation-map.md` before selecting a dedicated/shared pass. S0
 - An AC may span several items; the overall AC stays unverified until all required checks pass in S05.
 - **Do not** include source implementation or claim executable test files were generated in S03.
 
+## Mermaid preview
+
+When this stage writes a fenced mermaid diagram, the markdown preview must be able to draw it. Use camelCase node ids. Put every label in double quotes. Do not use underscores, parentheses, or colons anywhere in the diagram. Write `env file` instead of an env filename, and `MONGO URI` instead of a name that contains an underscore. Edge labels are short words with no colon, such as `-->|connected|`.
+
 ## Procedure
 
 1. Choose a repository-specific approach within confirmed scope; explain consequential trade-offs with evidence rather than force irrelevant alternatives or effort numbers. Material product decisions return to S01.

@@ -9,10 +9,15 @@ description: "Discover relevant application code and assess change impact in Sav
 Read `references/runtime-boundary.md` before managed or preview work. This package is a primary stage skill; compatible internal reusable roles assist it but do not replace its owner. In managed mode, check the verified active stage matches S02; mismatched/legacy context needs runtime mapping, not silent bypass.
 
 - Validated S01 contract; current bounded application source/index and allowed repository scope
+- Approved S01 task, the current-path mermaid in the S01 brief, and the approved acceptance criteria are the search target. Do not draft acceptance criteria again.
 - Known docs/references if needed; prior source bindings and scan limits
 
 ## Reusable skill invocation
 Read `references/invocation-map.md` before selecting a dedicated/shared pass. S01 uses savyre-requirement-challenge after analyzed draft; S02 uses savyre-evidence-grounding after discovery before impact. Cross-stage consumers run only when their runtime records/checkpoint are present. Managed invocation requires registered compatible package and delegated pass; missing assignment/availability is a diagnostic or explicit runtime fallback, not proof a call ran. The primary remains the stage owner; do not call savyre-run-stage recursively.
+
+## Mermaid preview
+
+When this stage writes a fenced mermaid diagram, the markdown preview must be able to draw it. Use camelCase node ids. Put every label in double quotes. Do not use underscores, parentheses, or colons anywhere in the diagram. Write `env file` instead of an env filename, and `MONGO URI` instead of a name that contains an underscore. Edge labels are short words with no colon, such as `-->|connected|`.
 
 ## Procedure
 

@@ -14,6 +14,10 @@ Read `references/runtime-boundary.md` before managed or preview work. This packa
 ## Reusable skill invocation
 Read `references/invocation-map.md` before selecting a dedicated/shared pass. S01 uses savyre-requirement-challenge after analyzed draft; S02 uses savyre-evidence-grounding after discovery before impact. Cross-stage consumers run only when their runtime records/checkpoint are present. Managed invocation requires registered compatible package and delegated pass; missing assignment/availability is a diagnostic or explicit runtime fallback, not proof a call ran. The primary remains the stage owner; do not call savyre-run-stage recursively.
 
+## Mermaid preview
+
+When this stage writes a fenced mermaid diagram, the markdown preview must be able to draw it. Use camelCase node ids. Put every label in double quotes. Do not use underscores, parentheses, or colons anywhere in the diagram. Write `env file` instead of an env filename, and `MONGO URI` instead of a name that contains an underscore. Edge labels are short words with no colon, such as `-->|connected|`.
+
 ## Procedure
 
 1. Review change-scoped security/privacy/auth/dependency/regression surfaces with current evidence; distinguish source review from actual scans and missing assurance. No invented vulnerabilities/checks or blanket secure badge.

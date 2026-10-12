@@ -5,7 +5,7 @@ Read when routing a stage or selecting a reusable pass. This is a candidate call
 ## Primary stages and ordered dedicated subpasses
 | Stage | Primary | Dedicated pass | When |
 |---|---|---|---|
-| S01 | savyre-stage-task-definition | savyre-requirement-challenge | After analyzed draft, before task confirmation |
+| S01 | savyre-stage-task-definition | application-discovery, then savyre-requirement-challenge | After task confirm: task-scoped discovery, mermaid, then acceptance criteria; challenge after that draft, before confirmation |
 | S02 | savyre-stage-code-discovery | savyre-evidence-grounding | After discovery, before grounded impact/finalization |
 | S03 | savyre-stage-implementation-plan | none mandatory | Existing backlog validation is runtime logic; note UI scope for later `savyre-ui-ux-quality` |
 | S04 | savyre-stage-build-review | savyre-ui-ux-quality (conditional) | Optional Canvas or images for substantial UI + human design OK; skip Canvas for small edits; distinct review mode against current UI changes |
@@ -14,6 +14,7 @@ Read when routing a stage or selecting a reusable pass. This is a candidate call
 | S07 | savyre-stage-handoff | none mandatory | Export is supported runtime action; carry UI/UX outcomes and limitations |
 
 ## Cross-stage reusable consumers
+- application-discovery: S01 only, after the task is confirmed and before acceptance criteria. Task-scoped repo look, mermaid of that path, then the brief. Does not replace S01 and does not replace S02 code discovery.
 - savyre-run-stage: entry dispatcher; check stage/session/bundle before primary. Primary and subpasses do not recursively call router.
 - savyre-chat-continuation: before resuming, only with a runtime resume record; restore same question/action and actual task refs, not a hash as wording.
 - savyre-unified-chat-turn: consume actual runtime turn/next-action projection after status/results; it is not the missing chat-action producer.
@@ -22,7 +23,7 @@ Read when routing a stage or selecting a reusable pass. This is a candidate call
 - savyre-verification-before-completion: after required internal passes, before recommending finalization or transition; only check current checkpoint evidence, not software correctness by appearance.
 - savyre-response-composer: last presentation step, using already-produced stage facts and verified next action; does not overwrite intake/review/state.
 - savyre-test-author: only on an authorized S04 backlog item for Playwright by default (JS/TS, Python, Java, C#); AC gaps must not default to node --test. It writes AC-linked checks. S05 inventories and runs; it does not load this role to create files.
-- savyre-ui-ux-quality: only when runtime explicitly assigns it under S04 (or preview). Use `mode=build` with optional Cursor Canvas (or images/spec fallback) for substantial screens; skip Canvas for small edits; stop for human design approval only when a design proposal was used. Implement with the recorded component strategy; shadcn MCP only on authorized S04 writes for eligible stacks. Use `mode=review` against current source/preview bindings. Backend-only work may skip with recorded `not_applicable`. Does not replace S04, approve stages, or authorize deployment. Canvas/MCP cannot unlock a stage. Missing browser verification is `unable_to_verify`, never `passed`.
+- savyre-ui-ux-quality: only when runtime explicitly assigns it under S04 (or preview). Use `mode=build` with optional Cursor Canvas (or images/spec fallback) for substantial screens; skip Canvas for small edits; stop for human design approval only when a design proposal was used. Implement with the recorded component strategy; shadcn MCP only on authorized S04 writes for eligible stacks. Use `mode=review` against current source/preview bindings. Review completes `CHK-BROWSER-PREVIEW` with Playwright MCP snapshot or an authorized preview URL — not AC RED/GREEN and not Canvas/images alone. Backend-only work may skip with recorded `not_applicable`. Does not replace S04, approve stages, or authorize deployment. Canvas/MCP cannot unlock a stage. Missing browser verification is `unable_to_verify`, never `passed`.
 
 Order is conditional, not an instruction to load every reusable consumer on every turn. Runtime guards and user responses can pause/reopen work at any step. S01 challenger returning blockers preserves stable question IDs; S02 grounder returning gaps prevents unqualified impact assertions. Verification fails or unknown remains blocked/unassessed, not approval.
 

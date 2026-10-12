@@ -429,7 +429,7 @@ const TALK_FROM_ASSIGNED_THEN_LOCK =
   'Write 1-2 short sentences of substance about the draft. Do not name the file path and do not say I wrote / I\'ve written that file. Then speak userMessage exactly - do not invent a Please check / lock line. Do not invent features. Do not paste Official assignment, JSON, message, suggestedTask, hashes, or continuation. Do not list artifactTemplate headings in chat. Do not speak a leftover numbered list. Wait for /savyre-next.';
 
 const TALK_AFTER_CONFIRM_THEN_DRAFT =
-  'Task confirmed. Do not paste JSON. Do not speak leftover product names. Do not speak the canned draft line as the reply. Do not list Original Task headings in chat. Seven-stage: copy assignedTask into task_brief.md Original Task unchanged and fill the rest of the brief from that text. Legacy: copy input.md Assigned task into Original Task unchanged and fill the rest of ai-output.md from that same input.md text (no Generate Output placeholder). Then run turn. Then write 1-2 short sentences of substance (no file path, do not say I wrote the draft), then speak the new userMessage exactly.';
+  'Task confirmed. Do not paste JSON. Do not speak leftover product names. Do not speak the canned draft line as the reply. Do not list Original Task headings in chat. Seven-stage: copy assignedTask into task_brief.md Original Task unchanged. Then follow application-discovery in this order: inspect only the code that task touches, add a Current-path diagram mermaid section (or write No existing flow when the workspace has no application code). Then pause. If a missing fact would change what gets built, ask at most three questions and wait. Do not write acceptance criteria until they answer. If nothing material is missing, write No open questions identified and only then draft acceptance criteria. Do not write acceptance criteria before that diagram section. Legacy: copy input.md Assigned task into Original Task unchanged and fill the rest of ai-output.md from that same input.md text (no Generate Output placeholder). Then run turn. Then write 1-2 short sentences of substance (no file path, do not say I wrote the draft), then speak the new userMessage exactly.';
 
 const WORKFLOW_INSTRUCTION_RX = [
   /\bRun stage AI\b/i,
@@ -1267,17 +1267,38 @@ function isLifecycleCommand(command) {
   ).test(c);
 }
 
+function buildReviewCommandBody(command) {
+  const compact = String(command || '').replace(/\s+/g, ' ').trim();
+  if (!compact || /[`$()]/.test(compact)) return '';
+  const body = compact.replace(/^cd\s+(?:\.{1,2}[/\\])?[\w./\\-]+\s+&&\s+/i, '');
+  if (/[|&;]/.test(body)) return '';
+  return body;
+}
+
 function isBuildReviewTestCommand(command) {
   if (typeof brain?.isBuildReviewTestCommand === 'function') {
     return brain.isBuildReviewTestCommand(command) === true;
   }
-  const compact = String(command || '').replace(/\s+/g, ' ').trim();
-  if (!compact || /[`$()]/.test(compact)) return false;
-  const body = compact.replace(/^cd\s+(?:\.{1,2}[/\\])?[\w./\\-]+\s+&&\s+/i, '');
-  if (/[|&;]/.test(body)) return false;
+  const body = buildReviewCommandBody(command);
+  if (!body) return false;
   return /^(?:npm\s+(?:test|run\s+test)(?:\s+--(?:\s+\S+)*)?|node\s+--test(?:\s+\S+)*|npx\s+(?:vitest|jest)(?:\s+\S+)*|(?:python3?|py)\s+-m\s+pytest(?:\s+\S+)*|pytest(?:\s+\S+)*)$/i.test(
     body
   );
+}
+
+/** Project start script or one localhost request. Not install, deploy, or git. */
+function isBuildReviewCheckCommand(command) {
+  const body = buildReviewCommandBody(command);
+  if (!body) return false;
+  if (/^(?:npm\s+start|npm\s+run\s+(?:dev|start)(?:\s+--(?:\s+\S+)*)?)$/i.test(body)) return true;
+  if (
+    /^(?:curl|curl\.exe)\s+(?:-\S+\s+)*https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?(?:\/\S*)?$/i.test(
+      body
+    )
+  ) {
+    return true;
+  }
+  return /^Invoke-WebRequest\s+-Uri\s+['"]?https?:\/\/(?:localhost|127\.0\.0\.1)/i.test(body);
 }
 
 function classifyTestCommandResult(input) {
@@ -3100,6 +3121,16 @@ async function handleHook(input) {
       });
       return allow();
     }
+    if (buildReview && isBuildReviewCheckCommand(command)) {
+      await appendEvidence(workspace, {
+        executionId: manifest.executionId,
+        hook: event,
+        decision: 'allow',
+        tool: 'Shell',
+        reason: 'done_check'
+      });
+      return allow();
+    }
     await appendEvidence(workspace, {
       executionId: manifest.executionId,
       hook: event,
@@ -3110,7 +3141,7 @@ async function handleHook(input) {
     return deny(
       `${stageTitle(manifest.stageId)} does not allow terminal commands.`,
       buildReview
-        ? 'You may run the test command for this backlog item (`npm test`, `node --test`, or `pytest`). A failing run is recorded as red and a later passing run as green. Do not run any other terminal command. Use /savyre-stop to leave enforced mode. You cannot approve the stage.'
+        ? 'You may run the test command for this backlog item (`npm test`, `node --test`, or `pytest`). You may also run the project start script (`npm start`, `npm run dev`, `npm run start`) and one request to localhost or 127.0.0.1 when the done check needs a running process. A failing test run is recorded as red and a later passing run as green. Do not install packages, deploy, or change git. Use /savyre-stop to leave enforced mode. You cannot approve the stage.'
         : 'Do not run terminal commands. Use /savyre-stop to leave enforced mode. You cannot approve the stage.'
     );
   }

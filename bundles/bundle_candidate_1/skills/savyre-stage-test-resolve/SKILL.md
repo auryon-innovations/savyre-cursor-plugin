@@ -33,6 +33,10 @@ AC gaps must not default to Node-only or manual when Playwright can be scaffolde
 
 Chat copy follows the same split: inventory says list and run existing checks; a gap says the AC stays unverified and the next write is an authorized S04 test-author item. Continue with `/savyre-next`. Chat does not finish the stage by itself.
 
+## Mermaid preview
+
+When this stage writes a fenced mermaid diagram, the markdown preview must be able to draw it. Use camelCase node ids. Put every label in double quotes. Do not use underscores, parentheses, or colons anywhere in the diagram. Write `env file` instead of an env filename, and `MONGO URI` instead of a name that contains an underscore. Edge labels are short words with no colon, such as `-->|connected|`.
+
 ## Procedure
 
 1. Inventory observed tests/helpers/commands and setup/scan limitations. Test existence is not pass/coverage; do not prescribe a new framework.

@@ -5,7 +5,7 @@ Read when routing a stage or selecting a reusable pass. This is a candidate call
 ## Primary stages and ordered dedicated subpasses
 | Stage | Primary | Dedicated pass | When |
 |---|---|---|---|
-| S01 | savyre-stage-task-definition | application-discovery, then savyre-requirement-challenge | After task confirm: task-scoped discovery, mermaid, then acceptance criteria; challenge after that draft, before confirmation |
+| S01 | savyre-stage-task-definition | application-discovery, then savyre-requirement-challenge | After task confirm: task-scoped discovery, mermaid, pause while a product fact is open, then acceptance criteria; challenge after that draft, before confirmation |
 | S02 | savyre-stage-code-discovery | savyre-evidence-grounding | After discovery, before grounded impact/finalization |
 | S03 | savyre-stage-implementation-plan | none mandatory | Existing backlog validation is runtime logic; note UI scope for later `savyre-ui-ux-quality` |
 | S04 | savyre-stage-build-review | savyre-ui-ux-quality (conditional) | Optional Canvas or images for substantial UI + human design OK; skip Canvas for small edits; distinct review mode against current UI changes |
@@ -14,7 +14,7 @@ Read when routing a stage or selecting a reusable pass. This is a candidate call
 | S07 | savyre-stage-handoff | none mandatory | Export is supported runtime action; carry UI/UX outcomes and limitations |
 
 ## Cross-stage reusable consumers
-- application-discovery: S01 only, after the task is confirmed and before acceptance criteria. Task-scoped repo look, mermaid of that path, then the brief. Does not replace S01 and does not replace S02 code discovery.
+- application-discovery: S01 only, after the task is confirmed and before acceptance criteria. Task-scoped repo look, mermaid of that path, then a pause when a product fact is still open, then the brief. Does not replace S01 and does not replace S02 code discovery.
 - savyre-run-stage: entry dispatcher; check stage/session/bundle before primary. Primary and subpasses do not recursively call router.
 - savyre-chat-continuation: before resuming, only with a runtime resume record; restore same question/action and actual task refs, not a hash as wording.
 - savyre-unified-chat-turn: consume actual runtime turn/next-action projection after status/results; it is not the missing chat-action producer.

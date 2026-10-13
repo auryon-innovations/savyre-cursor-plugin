@@ -429,7 +429,7 @@ const TALK_FROM_ASSIGNED_THEN_LOCK =
   'Write 1-2 short sentences of substance about the draft. Do not name the file path and do not say I wrote / I\'ve written that file. Then speak userMessage exactly - do not invent a Please check / lock line. Do not invent features. Do not paste Official assignment, JSON, message, suggestedTask, hashes, or continuation. Do not list artifactTemplate headings in chat. Do not speak a leftover numbered list. Wait for /savyre-next.';
 
 const TALK_AFTER_CONFIRM_THEN_DRAFT =
-  'Task confirmed. Do not paste JSON. Do not speak leftover product names. Do not speak the canned draft line as the reply. Do not list Original Task headings in chat. Seven-stage: copy assignedTask into task_brief.md Original Task unchanged. Then follow application-discovery in this order: inspect only the code that task touches, add a Current-path diagram mermaid section (or write No existing flow when the workspace has no application code). Then pause. If a missing fact would change what gets built, ask at most three questions and wait. Do not write acceptance criteria until they answer. If nothing material is missing, write No open questions identified and only then draft acceptance criteria. Do not write acceptance criteria before that diagram section. Legacy: copy input.md Assigned task into Original Task unchanged and fill the rest of ai-output.md from that same input.md text (no Generate Output placeholder). Then run turn. Then write 1-2 short sentences of substance (no file path, do not say I wrote the draft), then speak the new userMessage exactly.';
+  'Task confirmed. Do not paste JSON. Do not speak leftover product names. Do not speak the canned draft line as the reply. Do not list Original Task headings in chat. Seven-stage: copy assignedTask into task_brief.md Original Task unchanged. Then follow application-discovery in this order: inspect only the code that task touches, add a Current-path diagram mermaid section (or write No existing flow when the workspace has no application code). Then pause. If a missing fact would change what gets built, including sign-in, storage, the API, or what the user can do, ask at most three questions and wait. Do not write requirements, user stories, or acceptance criteria in that turn. Assumptions wait until they choose Recommend defaults or Decide for me, or until they answer. If nothing material is missing, write No open questions identified and only then draft acceptance criteria. Do not write acceptance criteria before that diagram section. Legacy: copy input.md Assigned task into Original Task unchanged and fill the rest of ai-output.md from that same input.md text (no Generate Output placeholder). Then run turn. Then write 1-2 short sentences of substance (no file path, do not say I wrote the draft), then speak the new userMessage exactly.';
 
 const WORKFLOW_INSTRUCTION_RX = [
   /\bRun stage AI\b/i,
@@ -2544,6 +2544,34 @@ async function ensureLockReadyReview(workspace, stageId, opts = {}) {
   for (const abs of [...new Set(targets)]) {
     await fs.mkdir(path.dirname(abs), { recursive: true });
     await fs.writeFile(abs, body, 'utf8');
+  }
+  return true;
+}
+
+async function compactResolvedOpenQuestions(workspace, stageId) {
+  if (typeof brain?.compactResolvedOpenQuestionIds !== 'function') return false;
+  const abs = path.join(workspace, ...stageDraftRel(stageId).split('/'));
+  let draft = '';
+  try {
+    draft = await fs.readFile(abs, 'utf8');
+  } catch {
+    return false;
+  }
+  const review = await readStageReview(workspace, stageId);
+  const next = brain.compactResolvedOpenQuestionIds(draft, review.text);
+  const draftSame = next.draft === String(draft).replace(/\r\n/g, '\n');
+  const reviewSame = next.review === String(review.text || '').replace(/\r\n/g, '\n');
+  if (draftSame && reviewSame) return false;
+  if (!draftSame) {
+    await fs.writeFile(abs, next.draft.endsWith('\n') ? next.draft : `${next.draft}\n`, 'utf8');
+  }
+  if (!reviewSame && String(next.review || '').trim()) {
+    await fs.mkdir(path.dirname(review.abs), { recursive: true });
+    await fs.writeFile(
+      review.abs,
+      next.review.endsWith('\n') ? next.review : `${next.review}\n`,
+      'utf8'
+    );
   }
   return true;
 }
@@ -4689,6 +4717,7 @@ async function cmdTurn() {
   if (!match.ok) return match;
   const session = await readJsonIfPresent(path.join(workspace, '.savyre', 'session.json'));
   const stageId = match.panelStageId;
+  await compactResolvedOpenQuestions(workspace, stageId);
   if (
     (stageId === 's05-test-resolve' || stageId === '11-test-execution') &&
     brain &&
@@ -5154,6 +5183,7 @@ async function cmdGenerateFinal() {
   const stageId = match.panelStageId;
   const aiReady = await aiOutputLooksWritten(workspace, stageId);
   const existing = await readJsonIfPresent(path.join(workspace, CHAT_CHECKPOINT_REL));
+  await compactResolvedOpenQuestions(workspace, stageId);
   const draftTextEarly = await readDraftText(workspace, stageId);
   const inputFile = await readStageInput(workspace, stageId);
   const assignedEarly = extractAssignedTaskPlain(inputFile.text) || draftTextEarly || '';

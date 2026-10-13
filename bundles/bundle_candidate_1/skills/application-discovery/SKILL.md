@@ -23,7 +23,7 @@ Write the result into the S01 draft `task_brief.md` in this order:
 
 **Mermaid.** After that look, add a `Current-path diagram` section with one fenced `mermaid` block of the observed path. Every node comes from a file or flow just found. Label observed facts separately from inferences. If the workspace has no application code, write **No existing flow** and skip the diagram. The markdown preview must be able to draw the diagram. Use camelCase node ids. Put every label in double quotes. Do not use underscores, parentheses, colons, or dots anywhere in the diagram. Write `index js` instead of a filename, `env file` instead of an env filename, and `MONGO URI` instead of a name that contains an underscore. Keep one connected graph. Edge labels are short words with no colon, such as `-->|connected|`.
 
-**Follow-up pause.** After the diagram section (or the no-existing-flow note), decide readiness from the task plus what the code showed. If a missing fact would change the core workflow, scope, or feasibility, ask at most three questions and wait. Offer **Guide me**, **Recommend defaults**, or **Decide for me** when a technical choice is still open. If the task and the code already answer it, write **No open questions identified** and do not ask. Do not draft acceptance criteria in the same turn as an unanswered question.
+**Follow-up pause.** After the diagram section (or the no-existing-flow note), decide readiness from the task plus what the code showed. Sign-in, storage, the API, and what the user can do are questions when the task leaves them open. Ask at most three questions and wait. Offer **Guide me**, **Recommend defaults**, or **Decide for me** when a technical choice is still open. Assumptions are allowed only after the developer chooses **Recommend defaults** or **Decide for me**, or after they answer. If the task and the code already answer it, write **No open questions identified** and do not ask. In a turn that asks a question, stop after the current-path note and the questions. Do not write requirements, user stories, or acceptance criteria in that turn.
 
 **Acceptance criteria.** Draft `AC-###` only after that pause: either the developer has answered, or the brief says **No open questions identified**. Each criterion states the requested change and, when code exists, today's behavior.
 
@@ -49,8 +49,8 @@ These are decision dimensions, not mandatory form fields. Infer from evidence; o
 Choose one readiness state:
 
 - **Ready:** Enough information exists to carry out the requested next step.
-- **Ready with assumptions:** Missing details have reasonable, reversible defaults. State material assumptions and proceed within the user's request.
-- **Needs clarification:** A missing fact would change the core workflow, scope, feasibility, or an action that cannot be safely reversed. Ask only for those facts; continue independent work where useful.
+- **Ready with assumptions:** The developer chose **Recommend defaults** or **Decide for me**, or already answered. State those reversible defaults and proceed. A missing fact about sign-in, storage, the API, or what the user can do stays **Needs clarification** until they answer or delegate.
+- **Needs clarification:** A missing fact would change the core workflow, scope, feasibility, or an action that cannot be safely reversed. Ask only for those facts. Do not fill those facts as assumptions in the same turn.
 
 Readiness is relative to the next step: missing production credentials need not block a local prototype. Do not silently substitute mocked behavior for a requested working integration.
 
@@ -64,7 +64,7 @@ Offer these decision styles when the user has unresolved choices and has not alr
 - **Recommend defaults:** Present a preferred approach and its main tradeoff; use reversible defaults unless the user objects, subject to any required answers or permissions.
 - **Decide for me:** Select suitable technical defaults, explain consequential decisions briefly, and continue without repeated preference checks.
 
-Accept equivalent natural language such as "you choose" as delegation. Preserve that choice across follow-ups; do not repeatedly ask for a mode. If no style is specified, recommend defaults for reversible choices. Silence is not an answer to a required question or approval for an external action.
+Accept equivalent natural language such as "you choose" as delegation. Preserve that choice across follow-ups; do not repeatedly ask for a mode. If no style is specified, ask. Recommend defaults only after the developer chooses **Recommend defaults** or **Decide for me**. Silence is not an answer to a required question or approval for an external action.
 
 Delegation covers technical choices within the request, not business facts. Never present invented pricing rules, access policies, customer commitments, or legal obligations as established requirements. For an exploratory prototype, propose explicitly provisional business assumptions when appropriate. Otherwise ask the smallest necessary question. Choosing a hosting provider does not authorize purchasing, publishing, or creating external accounts.
 
@@ -87,7 +87,7 @@ Use a compact response for simple work and a structured brief for larger work. I
 5. **Application components:** What must run where, with a brief reason.
 6. **Technical decisions:** Stack and integrations, distinguishing existing constraints from delegated recommendations.
 7. **Assumptions and open questions:** Clearly separate provisional defaults from blocking unknowns.
-8. **Acceptance criteria:** Observable behavior that establishes completion, including relevant failure cases. Draft these only after the diagram section.
+8. **Acceptance criteria:** Observable behavior that establishes completion, including relevant failure cases. Draft these only after the diagram section, and only after open questions are answered or the brief says **No open questions identified**.
 9. **Next steps:** A practical implementation sequence and the first actionable step. S02 still performs evidence-based code discovery; do not treat this brief as that stage.
 
 Keep user requirements, delegated decisions, and unresolved questions visibly distinguishable. Do not require approval of the whole brief as a ritual. If the user requested planning, finish with the brief. If the user requested implementation, carry the brief into the authorized implementation once ready; do not stop merely to offer to build it. Honor a user's request to review the plan first. In managed S01, stop after the brief and the acceptance-criteria approval ask; S01 does not implement.

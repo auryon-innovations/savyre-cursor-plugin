@@ -15,7 +15,8 @@ Inputs: Actual failure record, runtime recovery action/budget, allowed tools/wri
 1. For permitted retry/repair follow the supplied bounded action/budget once per actual attempt; stop when budget exhausted or unclear. Repeated recursion does not create authority.
 2. For ask resume only the specified stable question; for blocked report actual reason and stay blocked; for verified fallback route only to available approved runtime path. No fallback exporter/CLI is presumed to exist.
 3. Preserve rejected/failed evidence and actual task state; repair formatting only when delegated and never turn failing criteria into passes.
-4. Return recovery outcome or unresolved diagnostic to primary/runtime; no source/shell/delegation/Git/external actions beyond separately recorded permission.
+4. Determine the lock from an explicit status result: enforced means the lock is on, and idle means it is off. A turn, confirm, or answer envelope does not set the lock. If the lock is unclear, refresh status before writing.
+5. Return recovery outcome or unresolved diagnostic to primary/runtime; no source/shell/delegation/Git/external actions beyond separately recorded permission. Do not add a separate reply. When recovery is blocked or ask, that diagnostic wins. Otherwise response-composer owns the spoken copy.
 
 ## Output and handoff
 Recovery action attempted/proposed, actual result if observed, remaining budget/blocker, preserved evidence and actual next action.

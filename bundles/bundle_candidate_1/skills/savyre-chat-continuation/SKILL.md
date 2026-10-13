@@ -14,7 +14,7 @@ Inputs: Runtime resume record, pinned session/workflow/bundle/schema identities,
 
 1. Check record matches current session/stage/internal step and compatible bundle. Missing/conflicting record needs a diagnostic or explicit runtime rehydration, not invented chronology.
 2. Treat originalTaskHash as fingerprint; retrieve exact wording from referenced approved artifact when available. If absent say wording unavailable rather than substitute hash or remembered paraphrase.
-3. Resume the same pending question/action; reuse resolved decisions and suppressed questions. Do not mint an official ID or automatically answer it.
+3. Resume the same pending question/action; reuse resolved decisions and suppressed questions. Do not mint an official ID or automatically answer it. When a pending question is set, that question wins over ordinary confirm or draft copy. Do not add a separate reply; response-composer owns the spoken copy.
 4. Return a resume summary/limitations and assigned primary/pass to runtime. Preserve pinned legacy behavior; neither continuation nor preview silently remaps old stage numbers.
 
 ## Output and handoff

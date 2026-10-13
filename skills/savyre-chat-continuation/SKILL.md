@@ -14,4 +14,4 @@ This skill rides along on Stages 01–15. `continuation` is a small resume recor
 - If `continuation.pendingQuestionId` is set, resume **that same** Open Question. Do not invent a new id.
 - Keep using `continuation.activeSkill` / JSON `turn.activeSkill` as the stage role.
 - Treat `continuation.originalTaskHash` as the confirmed Task Input wording. Do not rewrite it.
-- Speak only JSON `userMessage`. Do not dump the continuation JSON.
+- Do not dump the continuation JSON. Do not add a separate reply. Response-composer owns the spoken copy. When `continuation.pendingQuestionId` is set, that question wins over ordinary confirm or draft copy. Otherwise end with the latest runtime `userMessage`.

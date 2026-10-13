@@ -17,6 +17,8 @@ Show this list. Do not invent workflow rules. Accept / Generate final / Validate
 | `/savyre-answer` | Save an answer to an open question |
 | `/savyre-export` | Export HTML workflow report and open in browser (same as panel Export report) |
 | `/savyre-stop` | Clear the chat lock only |
+| `/savyre-reset-stage` | Clear this stage and every stage after it. Confirm with `yes` |
+| `/savyre-reset-workflow` | Clear all seven stages and return to Task Definition. Confirm with `yes` |
 
 Also available as aliases where installed: `/savyre-confirm`, `/savyre-generate-final`, `/savyre-validate` (prefer `/savyre-next`).
 

@@ -19,4 +19,4 @@ This skill rides along on Stages 01–15. `unifiedTurn` is a read-only adapter o
 - When JSON `askQuestion` is set (or `intervention.ask` is true with a pending OQ and `forbidAskQuestion` is not true), you **MUST** call Cursor `AskQuestion` as your next tool action before any other reply. If `forbidAskQuestion` is true, `askQuestion` is null, or the id is in `resolvedOpenQuestionIds`, do **not** AskQuestion — even if the user says ask again. When allowed: clickable single-select, ids `1`/`2`/`3`, prefer JSON `askQuestion`; after click run `/savyre-answer`. Do not dump Options text when the picker ran. Do not ask them to lock. Do not mint new OQ ids. Do not re-ask RESOLVED rows.
 - `unifiedTurn.status` of `complete` means Savyre already finished the stage on disk. You still cannot unlock.
 - `canApprove` and `canUnlockStage` are always false.
-- Speak only JSON `userMessage`. Do not dump the turn JSON.
+- Do not dump the turn JSON. Do not add a second reply. Response-composer owns the spoken copy. A pending question or a blocking recovery wins over ordinary confirm or draft copy. Otherwise end with the latest runtime `userMessage`.

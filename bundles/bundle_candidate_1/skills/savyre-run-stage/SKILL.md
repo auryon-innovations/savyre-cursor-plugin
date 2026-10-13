@@ -14,7 +14,7 @@ Inputs: Actual status/context, stage/internal step, compatible registered bundle
 
 1. Read references/invocation-map.md and verify active managed identities/status. Idle/missing/incompatible context means report diagnostic and stop managed dispatch; explicit preview only describes mapping/draft limitations.
 2. Resolve the assigned S01–S07 primary from registered packages; dispatch dedicated challenge/grounding only when runtime assigns it. Cross-stage shared consumers ride alongside primary, not replace activeSkill.
-3. Require available compatible package/version and allowed delegated action; no fake invocation, unavailable subagent or hidden legacy renumber. Missing dedicated pass needs diagnostic or explicit runtime fallback.
+3. Use the stage role and the current artifactTemplate from the active Chat runtime. Continue locally when they are available. Fetch missing stage instructions from MCP only when it is connected. Wait only if the required stage contract is missing from both the runtime and MCP. Require available compatible package/version and allowed delegated action; no fake invocation, unavailable subagent or hidden legacy renumber. Missing dedicated pass needs diagnostic or explicit runtime fallback.
 4. Return selected primary/pass and its input/writer/permission bindings to existing runtime. Do not recursively call router from primary or run lock/approve/unlock/merge/deploy actions.
 
 ## Output and handoff

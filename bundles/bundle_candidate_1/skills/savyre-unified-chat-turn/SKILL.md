@@ -16,7 +16,8 @@ Inputs: Actual runtime projection, active primary/pass, artifact/review/source b
 2. Use runtime next action/status as observed process state; distinguish stage process complete from software verified and developer accepted. Unknown/contradictory evidence is reported, not masked by complete.
 3. Return allowed next-action copy/facts to composer/primary. Never run the next action, grant canApprove/canUnlock or rewrite a projection because chat requests it.
 4. If the runtime JSON has `intervention.ask` or `turn.question`, ask only that one question with Cursor `AskQuestion` (clickable 3 options, ids `1`/`2`/`3`). After they click, the primary records `/savyre-answer`. Do not mint new OQ ids when an Open Questions table already exists. Do not re-ask RESOLVED rows.
-4. Preserve current stage/pass and pinned identities; no second workflow engine or fabricated turn history.
+5. Do not add a second reply. Response-composer owns the spoken copy. A pending question or a blocking recovery wins over ordinary confirm or draft copy.
+6. Preserve current stage/pass and pinned identities; no second workflow engine or fabricated turn history.
 
 ## Output and handoff
 Observed process state, artifact/revision refs, missing evidence/identity issue and actual allowed next action.

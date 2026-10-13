@@ -46,7 +46,7 @@ Same behavior in Cursor Agent and Claude Code. When managed Chat has this stage 
 
 ## Mermaid preview
 
-When this stage writes a fenced mermaid diagram, the markdown preview must be able to draw it. Use camelCase node ids. Put every label in double quotes. Do not use underscores, parentheses, or colons anywhere in the diagram. Write `env file` instead of an env filename, and `MONGO URI` instead of a name that contains an underscore. Edge labels are short words with no colon, such as `-->|connected|`.
+When this stage writes a fenced mermaid diagram, the markdown preview must be able to draw it. Use camelCase node ids. Put every label in double quotes. Do not use underscores, parentheses, colons, or dots anywhere in the diagram. Write `index js` instead of a filename, `env file` instead of an env filename, and `MONGO URI` instead of a name that contains an underscore. Keep one connected graph. Edge labels are short words with no colon, such as `-->|connected|`.
 
 ## Procedure
 

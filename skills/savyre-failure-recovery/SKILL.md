@@ -15,5 +15,5 @@ This skill rides along on Stages 01–15. Transient failures are retried or repa
 - If `recovery.action` is `ask`, speak `userMessage` and wait for one decision.
 - If `recovery.action` is `blocked`, speak `userMessage` (the diagnostic). Stay on this stage. Do not run generate-final.
 - If `recovery.action` is `fallback_artifact`, continue in the Savyre panel.
-- If JSON `mode` is not `enforced`, the lock is not on. Do not treat a failed guard as enforced.
-- Speak only JSON `userMessage`. Do not dump recovery JSON.
+- Determine the lock from an explicit status result: `enforced` means the lock is on, and `idle` means it is off. A `turn`, `confirm`, or `answer` envelope does not set the lock. If the lock is unclear, refresh status before writing. Do not treat a failed guard as enforced.
+- Do not dump recovery JSON. Do not add a separate reply. When `recovery.action` is `blocked` or `ask`, that diagnostic wins. Otherwise response-composer owns the spoken copy and ends with the latest runtime `userMessage`.

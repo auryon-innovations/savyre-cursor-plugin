@@ -53,7 +53,7 @@
       "files": [
         {
           "path": "skills/application-discovery/SKILL.md",
-          "sha256": "a1c67b625e1060d3c8b4a4dccb82d69af0b71dc55a204fdf890fa9a44f82f186"
+          "sha256": "10404e96621b49ec0e3f1164adc92cf7db07375da7d413a14c4c9455a27ec007"
         },
         {
           "path": "skills/application-discovery/references/invocation-map.md",
@@ -72,7 +72,7 @@
       "files": [
         {
           "path": "skills/savyre-chat-continuation/SKILL.md",
-          "sha256": "acd2115d8ea31d2e754731772f70eb61838825dc3ac5efb686b46625d9648a55"
+          "sha256": "84cdc0dc751d5b01a1f61b46e397c5c7c95f3ad62084a00af3d92e739531e57c"
         },
         {
           "path": "skills/savyre-chat-continuation/references/invocation-map.md",
@@ -110,7 +110,7 @@
       "files": [
         {
           "path": "skills/savyre-failure-recovery/SKILL.md",
-          "sha256": "c138d7acd835e3db3c46335af263dfb096ff2edaed80c68cdd0f5cb6f9676bf6"
+          "sha256": "61029ffe6bc0efb2a69c6a7119b843e47b3bfd4958f07a434036eb2683333f27"
         },
         {
           "path": "skills/savyre-failure-recovery/references/invocation-map.md",
@@ -167,7 +167,7 @@
       "files": [
         {
           "path": "skills/savyre-response-composer/SKILL.md",
-          "sha256": "b3c7503984c550efc3c9e56fad8f5a63a9c27780090eb3dd6acc6859d5a52b58"
+          "sha256": "da4a3cb8e131e6b64007aef439ad1fde02dcf5fe5cd280f2a871ca865e0eab3e"
         },
         {
           "path": "skills/savyre-response-composer/references/invocation-map.md",
@@ -186,7 +186,7 @@
       "files": [
         {
           "path": "skills/savyre-run-stage/SKILL.md",
-          "sha256": "6434ae52b054b58e145c99e1c94e4b27cb574e90321b241c46546a00f8118fa9"
+          "sha256": "d9d9433a0284e9b81cbb370176ef7626483490f8f108db120cddc3e403eda6e0"
         },
         {
           "path": "skills/savyre-run-stage/references/invocation-map.md",
@@ -300,7 +300,7 @@
       "files": [
         {
           "path": "skills/savyre-stage-task-definition/SKILL.md",
-          "sha256": "976e1a2968cab0d4b5ff4eb8b1a5196bf4d34b3e5ff5cdbcb31bb9377d67e759"
+          "sha256": "893832b4dde9cc00c0af06c851df402aa5cde4cb753743c37831c2f5d17eefa8"
         },
         {
           "path": "skills/savyre-stage-task-definition/references/invocation-map.md",
@@ -400,7 +400,7 @@
       "files": [
         {
           "path": "skills/savyre-unified-chat-turn/SKILL.md",
-          "sha256": "816abd0508ed8c4311f153463eb7d5d5f01b956b84060672b67aae6f172c7eb4"
+          "sha256": "d21466080ee931b098d10b18899e5ec0afa23848903e78b05cccc3e94be9fbc4"
         },
         {
           "path": "skills/savyre-unified-chat-turn/references/invocation-map.md",
@@ -419,7 +419,7 @@
       "files": [
         {
           "path": "skills/savyre-verification-before-completion/SKILL.md",
-          "sha256": "3c69dba4104bd8513d7d2ebe3c4a167af6d42313a0ddaee164b81f7bacd5e743"
+          "sha256": "975f64ab5a39309d0313bd8feece00a303d62164dc0da1bb5a8b3d3f35080702"
         },
         {
           "path": "skills/savyre-verification-before-completion/references/invocation-map.md",

@@ -7,7 +7,7 @@ description: Shared Chat spoken-copy skill for every Savyre stage. Use when JSON
 
 You are **not** the stage role. Keep using JSON `cursorSkill` / `turn.activeSkill` for stage work.
 
-This skill rides along on every Savyre stage. Savyre owns the next slash. You own the talk before confirm and after the draft.
+This skill rides along on every Savyre stage. Savyre owns the next slash. You own the spoken reply. Other ride-along skills do not add their own reply. A pending question or a blocking recovery wins over ordinary confirm or draft copy.
 
 ## Talk to the user
 

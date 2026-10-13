@@ -2,12 +2,12 @@
 /**
  * Savyre thin plugin runtime.
  * - Hook mode (stdin JSON): enforce the active execution manifest.
- * - CLI: node savyre-guard.mjs run | start | status | stop | turn | confirm | next | answer | action | export-report | export
+ * - CLI: node savyre-guard.mjs run | start | status | stop | turn | confirm | next | answer | action | reset-stage | reset-workflow | export-report | export
  *
  * Contains no Savyre stage methodology.
  */
 import { createHash, createHmac, timingSafeEqual } from 'crypto';
-import { existsSync, readFileSync } from 'fs';
+import { existsSync, readFileSync, readdirSync } from 'fs';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
@@ -1256,7 +1256,7 @@ async function readKey() {
   return raw.trim();
 }
 
-const LIFECYCLE_VERBS = 'run|start|status|stop|turn|confirm|next|answer|action';
+const LIFECYCLE_VERBS = 'run|start|status|stop|turn|confirm|next|answer|action|reset-stage|reset-workflow';
 
 function isLifecycleCommand(command) {
   const c = String(command || '').replace(/\\/g, '/');
@@ -1559,6 +1559,16 @@ function parseCliJson(stdout) {
   return found.length ? found[found.length - 1] : null;
 }
 
+const LIVE_RESET_STAGE_IDS = new Set([
+  's01-task-definition',
+  's02-code-discovery',
+  's03-implementation-plan',
+  's04-build-review',
+  's05-test-resolve',
+  's06-delivery-readiness',
+  's07-handoff'
+]);
+
 function readPanelStageId(workspace) {
   try {
     const raw = JSON.parse(readFileSync(path.join(workspace, '.savyre', 'stage-status.json'), 'utf8'));
@@ -1568,6 +1578,62 @@ function readPanelStageId(workspace) {
   } catch {
     return null;
   }
+}
+
+function stageStatusUpdatedAt(workspace) {
+  try {
+    const raw = JSON.parse(readFileSync(path.join(workspace, '.savyre', 'stage-status.json'), 'utf8'));
+    const t = Date.parse(raw.updatedAt || '');
+    return Number.isFinite(t) ? t : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function findWorkspacesNamed(label) {
+  const want = String(label || '').trim().toLowerCase();
+  if (!want) return [];
+  const home = process.env.USERPROFILE || process.env.HOME || '';
+  const root = path.join(home, 'Documents', 'Projects');
+  if (!existsSync(root)) return [];
+  const hits = [];
+  const skip = new Set(['node_modules', '.git', 'dist', 'out', '.next', 'vendor']);
+  const walk = (dir, depth) => {
+    let entries = [];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || skip.has(entry.name) || entry.name.startsWith('.')) continue;
+      const full = path.join(dir, entry.name);
+      if (
+        entry.name.toLowerCase() === want &&
+        existsSync(path.join(full, '.savyre', 'stage-status.json'))
+      ) {
+        hits.push(full);
+      }
+      if (depth < 4) walk(full, depth + 1);
+    }
+  };
+  walk(root, 0);
+  return hits;
+}
+
+/**
+ * The shell cwd can sit in another repo (for example the extension) while the
+ * open window is the app. Reset the folder the window is actually showing.
+ */
+function workspaceForReset(cwdWorkspace) {
+  const label = String(process.env.CURSOR_WORKSPACE_LABEL || '').trim();
+  const cwdName = cwdWorkspace ? path.basename(cwdWorkspace).toLowerCase() : '';
+  if (!label || cwdName === label.toLowerCase()) return cwdWorkspace;
+  const hits = findWorkspacesNamed(label);
+  if (!hits.length) return cwdWorkspace;
+  hits.sort((a, b) => stageStatusUpdatedAt(b) - stageStatusUpdatedAt(a));
+  const live = hits.find((dir) => LIVE_RESET_STAGE_IDS.has(readPanelStageId(dir) || ''));
+  return live || hits[0];
 }
 
 function readStageStatusDoc(workspace) {
@@ -4190,9 +4256,16 @@ async function readOrCreateCheckpoint(workspace, stageId, sessionId) {
 async function writeCheckpoint(workspace, checkpoint) {
   const file = path.join(workspace, CHAT_CHECKPOINT_REL);
   const prev = await readJsonIfPresent(file);
+  const keepConfirmed =
+    prev &&
+    prev.stageId === checkpoint.stageId &&
+    isTaskCaptureStage(checkpoint.stageId) &&
+    prev.developerConfirmed === true;
+  const developerConfirmed = checkpoint.developerConfirmed === true || keepConfirmed;
   const lastGf = checkpoint.lastGenerateFinalStageId || prev?.lastGenerateFinalStageId;
   const next = {
     ...checkpoint,
+    developerConfirmed,
     ...(typeof lastGf === 'string' && lastGf.trim()
       ? {
           lastGenerateFinalStageId: lastGf.trim(),
@@ -5263,7 +5336,12 @@ async function cmdNext() {
   }
   const boundStageId = await readChatBoundStageId(workspace);
   if (!boundStageId || boundStageId !== panelStageId) {
-    return cmdStart('');
+    const started = await cmdStart('');
+    if (started?.mode === 'idle' || started?.ok === false) return started;
+    const rebound = await readStageInput(workspace, panelStageId);
+    const assigned = extractAssignedTaskPlain(rebound.text);
+    if (isTaskCaptureStage(panelStageId) && assigned) return cmdConfirm();
+    return started;
   }
   const existing = await readJsonIfPresent(path.join(workspace, CHAT_CHECKPOINT_REL));
   if (isTaskCaptureStage(panelStageId) && !existing?.developerConfirmed) {
@@ -5345,6 +5423,74 @@ async function cmdAction(actionName, ...rest) {
   );
 }
 
+async function cmdReset(verb, confirmWord) {
+  const mode = verb === 'reset-workflow' ? 'workflow' : 'stage';
+  const workspace = workspaceForReset(await findWorkspaceFromHook({ cwd: process.cwd() }));
+  const confirmed = String(confirmWord || '').trim().toLowerCase() === 'yes';
+  const panelStageId = readPanelStageId(workspace);
+  if (!confirmed) {
+    const userMessage =
+      mode === 'workflow'
+        ? 'Reset the whole workflow? All seven stages will be cleared and you will return to Task Definition. App code is not deleted. Run `/savyre-reset-workflow yes` to confirm.'
+        : 'Reset this stage and every stage after it? Earlier stages stay. App code is not deleted. Run `/savyre-reset-stage yes` to confirm.';
+    return withUserMessage(
+      {
+        ok: false,
+        action: verb,
+        confirmed: false,
+        mode,
+        stageId: panelStageId,
+        unlocksStage: false
+      },
+      userMessage
+    );
+  }
+  if (mode === 'stage' && !panelStageId) {
+    return withUserMessage(
+      { ok: false, action: verb, mode, unlocksStage: false },
+      'Start a session in the panel first, then run `/savyre-reset-stage yes`.'
+    );
+  }
+  const cliJs = resolveSavyreCliJs();
+  if (!cliJs) {
+    return withUserMessage(
+      { ok: false, action: verb, mode, unlocksStage: false },
+      'Savyre CLI not found. Set SAVYRE_CLI to cli/dist/savyre.js, or keep the extension repo next to this plugin.'
+    );
+  }
+  const args = [cliJs, 'workflow', 'reset', '--json', '--mode', mode];
+  if (mode === 'stage') args.push('--stage', panelStageId);
+  const result = spawnSync(process.execPath, args, {
+    cwd: workspace,
+    encoding: 'utf8',
+    timeout: 120000
+  });
+  const parsed =
+    parseCliJson(result.stdout) ||
+    parseCliJson(result.stderr) ||
+    parseCliJson(`${result.stdout || ''}\n${result.stderr || ''}`);
+  if (!parsed || parsed.ok !== true) {
+    const reason = String(parsed?.message || result.stderr || result.stdout || 'Reset failed.').trim();
+    return withUserMessage(
+      { ok: false, action: verb, mode, stageId: panelStageId, unlocksStage: false, reason },
+      reason
+    );
+  }
+  const message = `${String(parsed.message || '').trim()} Run \`/savyre-start\` when you are ready.`.trim();
+  return withUserMessage(
+    {
+      ok: true,
+      mode: 'idle',
+      action: verb,
+      resetMode: mode,
+      stageId: parsed.data?.stageId || panelStageId,
+      clearedStageIds: parsed.data?.clearedStageIds || [],
+      unlocksStage: false
+    },
+    message
+  );
+}
+
 async function cmdStop() {
   const workspace = await findWorkspaceFromHook({ cwd: process.cwd() });
   const { manifest } = await loadActive(workspace);
@@ -5374,6 +5520,10 @@ async function main() {
   const verb = process.argv[2];
   if (verb === 'export-report' || verb === 'export') {
     reply(await cmdExportReport());
+    return;
+  }
+  if (verb === 'reset-stage' || verb === 'reset-workflow') {
+    reply(await cmdReset(verb, process.argv[3]));
     return;
   }
   if (

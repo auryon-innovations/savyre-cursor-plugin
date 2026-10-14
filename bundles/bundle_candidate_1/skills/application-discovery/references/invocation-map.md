@@ -14,7 +14,7 @@ Read when routing a stage or selecting a reusable pass. This is a candidate call
 | S07 | savyre-stage-handoff | none mandatory | Export is supported runtime action; carry UI/UX outcomes and limitations |
 
 ## Cross-stage reusable consumers
-- application-discovery: S01 only, after the task is confirmed and before acceptance criteria. Task-scoped repo look, mermaid of that path, then the brief. Does not replace S01 and does not replace S02 code discovery.
+- application-discovery: S01 only, after the task is confirmed and before acceptance criteria. Task-scoped repo look, mermaid of that path, then the brief. Evidence and product questions only in managed S01 — no stack/architecture/implementation sequence. Does not replace S01 and does not replace S02 code discovery.
 - savyre-run-stage: entry dispatcher; check stage/session/bundle before primary. Primary and subpasses do not recursively call router.
 - savyre-chat-continuation: before resuming, only with a runtime resume record; restore same question/action and actual task refs, not a hash as wording.
 - savyre-unified-chat-turn: consume actual runtime turn/next-action projection after status/results; it is not the missing chat-action producer.

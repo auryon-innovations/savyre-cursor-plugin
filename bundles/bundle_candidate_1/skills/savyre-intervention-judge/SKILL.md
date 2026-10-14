@@ -12,7 +12,7 @@ Inputs: Runtime intervention decision, stable pending/suppressed question IDs, c
 
 ## Procedure
 
-1. If runtime ask=true and `askQuestion` is set, present only the assigned material question. **Next tool call must be Cursor `AskQuestion`**. If `forbidAskQuestion` is true or the OQ is in `resolvedOpenQuestionIds`, do **not** ask again. Option ids `1`/`2`/`3`, product-specific labels. Do not dump Options when the picker ran. After they click, run `/savyre-answer <OQ-id> 1` (or 2/3). If `AskQuestion` is unavailable, speak a **multiline** Options block:
+1. If runtime ask=true and `askQuestion` is set, present only the assigned material question. **FIRST action must be Cursor `AskQuestion`** (before any chat text). Then speak `userMessage` once and STOP — never append Options/`1.`/`2.`/`3.`. If `forbidAskQuestion` is true or the OQ is in `resolvedOpenQuestionIds`, do **not** ask again. Option ids `1`/`2`/`3`, product-specific labels. After they pick, run `/savyre-answer <OQ-id> 1` (or 2/3). If `AskQuestion` is unavailable, speak a **multiline** Options block (and say AskQuestion was unavailable):
    ```
    <question>?
    Options:

@@ -5,11 +5,23 @@ description: Turn an application idea or incomplete development request into a s
 
 # Application Discovery
 
+## Managed S01 (required branch)
+
+When this skill is loaded under managed Savyre Stage 1 (`s01-task-definition`), read `references/runtime-boundary.md` and `references/invocation-map.md` first. In that mode:
+
+- Inspect and record only the existing task path, current behavior, and a Current-path diagram (or **No existing flow**).
+- Ask material product questions; return evidence for requirements and acceptance criteria.
+- Do **not** recommend a stack, architecture, or implementation sequence here.
+- Preserve delegated product decisions as decisions, not implementation plans.
+- The general “Select an approach”, stack recommendation, and “Next steps” planning sections below apply only to an explicitly requested standalone planning use of this skill — not managed S01.
+
+S01 remains the stage owner. This pass does not replace S02 code discovery, approve the stage, or write application source.
+
 Turn the user's intent into enough shared understanding to build the right thing. Judge completeness by consequential missing information, not prompt length. Scale the depth to the task: a prototype can need a few sentences; a production system may need explicit operational requirements.
 
 ## Savyre Stage 1 binding
 
-S01 loads this skill after the developer confirms the task wording and before acceptance criteria. S01 remains the stage owner. This pass does not replace S02 code discovery, approve the stage, or write application source.
+S01 loads this skill after the developer confirms the task wording and before acceptance criteria. Follow the Managed S01 branch above.
 
 Write the result into the S01 draft `task_brief.md` in this order:
 
@@ -70,6 +82,8 @@ Delegation covers technical choices within the request, not business facts. Neve
 
 ## Select an approach
 
+**Skip this section in managed S01.** It applies only to explicitly requested standalone planning.
+
 Prefer the existing stack and conventions when extending an application. For a new application, choose the simplest coherent stack that satisfies the workflow and constraints. Do not default every idea to a full-stack app, add a database without a persistence need, or introduce infrastructure for hypothetical scale.
 
 Consider UI/runtime, server/API, data storage, authentication, integrations, deployment, and validation only where relevant. Use the user's preferences and team skills, operating cost, maintainability, and delivery needs as decision criteria. Explain major tradeoffs briefly; avoid a catalog of frameworks.
@@ -82,15 +96,15 @@ Use a compact response for simple work and a structured brief for larger work. I
 
 1. **Goal and users:** Intended outcome and main workflow.
 2. **Scope:** MVP capabilities and meaningful exclusions.
-3. **Task-related discovery:** Stack, current behavior, and the files on this task's path.
+3. **Task-related discovery:** Existing stack/conventions observed on the path, current behavior, and the files on this task's path.
 4. **Current-path diagram:** Mermaid of that path, or **No existing flow**.
-5. **Application components:** What must run where, with a brief reason.
-6. **Technical decisions:** Stack and integrations, distinguishing existing constraints from delegated recommendations.
+5. **Application components:** (Standalone planning only.) What must run where, with a brief reason. Skip in managed S01 unless the task already names them.
+6. **Technical decisions:** (Standalone planning only.) Stack and integrations. In managed S01, record only existing constraints and product decisions the developer already made or delegated — do not invent a stack or architecture plan.
 7. **Assumptions and open questions:** Clearly separate provisional defaults from blocking unknowns.
 8. **Acceptance criteria:** Observable behavior that establishes completion, including relevant failure cases. Draft these only after the diagram section, and only after open questions are answered or the brief says **No open questions identified**.
-9. **Next steps:** A practical implementation sequence and the first actionable step. S02 still performs evidence-based code discovery; do not treat this brief as that stage.
+9. **Next steps:** (Standalone planning only.) A practical implementation sequence. Skip in managed S01; S02/S03 own discovery and planning. Do not treat this brief as those stages.
 
-Keep user requirements, delegated decisions, and unresolved questions visibly distinguishable. Do not require approval of the whole brief as a ritual. If the user requested planning, finish with the brief. If the user requested implementation, carry the brief into the authorized implementation once ready; do not stop merely to offer to build it. Honor a user's request to review the plan first. In managed S01, stop after the brief and the acceptance-criteria approval ask; S01 does not implement.
+Keep user requirements, delegated decisions, and unresolved questions visibly distinguishable. Do not require approval of the whole brief as a ritual. If the user requested planning, finish with the brief. If the user requested implementation, carry the brief into the authorized implementation once ready; do not stop merely to offer to build it. Honor a user's request to review the plan first. In managed S01, stop after the brief and the acceptance-criteria approval ask; S01 does not implement and does not produce technical planning.
 
 ## Calibration examples
 

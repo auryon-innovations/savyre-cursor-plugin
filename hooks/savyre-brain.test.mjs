@@ -23,17 +23,18 @@ test('chatUserMessage comes from the Savyre brain, not the plugin', async () => 
   const brain = await loadSavyreBrain();
   assert.ok(brain);
   assert.equal(brain.chatUserMessage('ask_what_to_build'), 'What should we build?');
+  // Default live catalog is seven-stage (stage_input.md companion, not legacy input.md).
   assert.equal(
     brain.chatUserMessage('confirm_task'),
-    "I've saved that under `savyre/stages/01-task-input/input.md`. If that's right, run `/savyre-next` to confirm."
+    "I've saved that under `stages/s01_task_definition/stage_input.md`. If that's right, run `/savyre-next` to confirm."
   );
   assert.equal(
     brain.chatUserMessage('confirm_task', { stageId: 's01-task-definition' }),
-    "I've saved that under `stages/s01_task_definition/stage_input.json`. If that's right, run `/savyre-next` to confirm."
+    "I've saved that under `stages/s01_task_definition/stage_input.md`. If that's right, run `/savyre-next` to confirm."
   );
   assert.equal(
     brain.chatUserMessage('task_confirmed_draft'),
-    "I'll write `savyre/stages/01-task-input/ai-output.md` from what you confirmed."
+    "I'll write `stages/s01_task_definition/task_brief.md` from what you confirmed."
   );
   assert.equal(
     brain.chatUserMessage('task_confirmed_draft', { stageId: 's01-task-definition' }),

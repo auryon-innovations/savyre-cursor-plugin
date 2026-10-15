@@ -22,5 +22,5 @@ test('R07 brain chat copy remains stable for regression baselines', async () => 
   resetSavyreBrainCache();
   const brain = await loadSavyreBrain();
   assert.equal(brain.chatUserMessage('ask_what_to_build'), 'What should we build?');
-  assert.match(brain.chatUserMessage('need_challenge'), /second look/i);
+  assert.match(brain.chatUserMessage('need_challenge'), /challenge_findings\.json.*status "completed"/i);
 });

@@ -19,6 +19,7 @@ import {
   loadSavyreBrain
 } from './savyre-brain.mjs';
 import { persistChatHookUsage } from './savyre-chat-usage.mjs';
+import { isLifecycleCommand } from './savyre-lifecycle.mjs';
 
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const KEY_ID = 'savyre-local-test';
@@ -1254,17 +1255,6 @@ function posixRel(from, to) {
 async function readKey() {
   const raw = await fs.readFile(KEY_PATH, 'utf8');
   return raw.trim();
-}
-
-const LIFECYCLE_VERBS = 'run|start|status|stop|turn|confirm|next|answer|action|reset-stage|reset-workflow';
-
-function isLifecycleCommand(command) {
-  const c = String(command || '').replace(/\\/g, '/');
-  if (!/savyre-(?:guard|cli)\.mjs/.test(c)) return false;
-  return new RegExp(
-    `savyre-(?:guard|cli)\\.mjs(?:["']|\\s)+["']?(${LIFECYCLE_VERBS})\\b`,
-    'i'
-  ).test(c);
 }
 
 function buildReviewCommandBody(command) {
@@ -2636,6 +2626,84 @@ function parseChallengeFindings(raw) {
   return { ok: true };
 }
 
+/** Completeness for generate-final — never treat bare passed:true as done. */
+function isChallengeFindingsGateCompleteLocal(raw) {
+  if (typeof brain?.isChallengeFindingsGateComplete === 'function') {
+    try {
+      return brain.isChallengeFindingsGateComplete(raw) === true;
+    } catch {
+      /* fall through */
+    }
+  }
+  if (typeof brain?.evaluateChallengePass === 'function') {
+    try {
+      return brain.evaluateChallengePass(raw).ok === true;
+    } catch {
+      /* fall through */
+    }
+  }
+  if (!parseChallengeFindings(raw).ok) return false;
+  const status = typeof raw.status === 'string' ? raw.status.trim() : '';
+  if (status === 'pending') return false;
+  if (status === 'completed') return true;
+  // Legacy: omit status only when there are real findings or binding hashes.
+  const findings = Array.isArray(raw.findings) ? raw.findings : [];
+  if (findings.length > 0) return true;
+  const hasBinding =
+    (typeof raw.reviewedDraftHash === 'string' && raw.reviewedDraftHash.trim()) ||
+    (typeof raw.reviewedInputHash === 'string' && raw.reviewedInputHash.trim());
+  return Boolean(hasBinding);
+}
+
+function evaluateChallengeFindingsWriteLocal(raw) {
+  if (typeof brain?.evaluateChallengeFindingsWrite === 'function') {
+    try {
+      return brain.evaluateChallengeFindingsWrite(raw);
+    } catch {
+      /* fall through */
+    }
+  }
+  if (!raw || typeof raw !== 'object') {
+    return { ok: false, reason: 'Challenge findings are missing.' };
+  }
+  if (raw.schemaVersion !== '1.0' || !Array.isArray(raw.findings)) {
+    return { ok: false, reason: 'Challenge findings need schemaVersion 1.0 and a findings array.' };
+  }
+  const status = typeof raw.status === 'string' ? raw.status.trim() : '';
+  if (status === 'pending') return { ok: true, pendingScaffold: true };
+  if (isChallengeFindingsGateCompleteLocal(raw)) return { ok: true, pendingScaffold: false };
+  return {
+    ok: false,
+    reason:
+      'challenge_findings.json must use status "completed" after a real critique (or status "pending" for scaffolds). Do not write passed: true without status.'
+  };
+}
+
+function isChallengeFindingsPathLocal(filePath) {
+  if (typeof brain?.isChallengeFindingsPath === 'function') {
+    try {
+      return brain.isChallengeFindingsPath(filePath) === true;
+    } catch {
+      /* fall through */
+    }
+  }
+  const n = String(filePath || '')
+    .replace(/\\/g, '/')
+    .toLowerCase();
+  return /(?:^|\/)challenge[_-]findings\.json$/.test(n);
+}
+
+function contentsFromInput(input) {
+  return (
+    input.contents ||
+    input.content ||
+    input.tool_input?.contents ||
+    input.tool_input?.content ||
+    input.tool_input?.new_string ||
+    ''
+  );
+}
+
 function parseEvidenceMap(raw) {
   if (!raw || typeof raw !== 'object') return { ok: false };
   if (raw.schemaVersion !== '1.0' || !Array.isArray(raw.items)) return { ok: false };
@@ -2687,7 +2755,8 @@ async function loadChatPass(workspace, stageId) {
     stageId === '02-requirement-analysis' || stageId === 's01-task-definition';
   const isEvidenceStage =
     stageId === '03-codebase-discovery' || stageId === 's02-code-discovery';
-  const challengeComplete = !isChallengeStage || parseChallengeFindings(challengeRaw).ok;
+  const challengeComplete =
+    !isChallengeStage || isChallengeFindingsGateCompleteLocal(challengeRaw);
   const evidenceReady = !isEvidenceStage || parseEvidenceMap(evidenceRaw).ok;
   return { challengeComplete, evidenceReady };
 }
@@ -3341,7 +3410,20 @@ async function handleHook(input) {
 
   if (event === 'preToolUse' && WRITE_TOOLS.has(name)) {
     const writeOk = manifest.writeMode === 'read_write';
-    const fp = fileFromInput(input);
+    const fp = String(fileFromInput(input) || '').trim();
+    if (!fp) {
+      await appendEvidence(workspace, {
+        executionId: manifest.executionId,
+        hook: event,
+        decision: 'deny',
+        tool: name,
+        reason: 'write_path_missing'
+      });
+      return deny(
+        'Savyre blocked a write with no destination path.',
+        'A recognized write tool must include a file path. Empty or unsupported write envelopes are denied.'
+      );
+    }
     if (
       writeOk &&
       fp &&
@@ -3415,6 +3497,45 @@ async function handleHook(input) {
         `Savyre ${manifest.stageId} is read-only. File edits are blocked.`,
         'Do not edit application files. Submit findings only. The Savyre extension records ACCEPTED.'
       );
+    }
+    // Permanent S01 lock fix: reject incomplete challenge_findings shortcuts on write.
+    if (writeOk && fp && isChallengeFindingsPathLocal(fp)) {
+      const rawText = String(contentsFromInput(input) || '').trim();
+      if (rawText) {
+        let rawJson = null;
+        try {
+          rawJson = JSON.parse(rawText);
+        } catch {
+          await appendEvidence(workspace, {
+            executionId: manifest.executionId,
+            hook: event,
+            decision: 'deny',
+            tool: name,
+            reason: 'challenge_findings_invalid_json'
+          });
+          return deny(
+            'Savyre blocked an invalid challenge_findings.json write.',
+            'Write valid JSON with schemaVersion 1.0, status "completed" (or "pending" for scaffolds), and a findings array.'
+          );
+        }
+        const writeGate = evaluateChallengeFindingsWriteLocal(rawJson);
+        if (!writeGate || writeGate.ok === false) {
+          await appendEvidence(workspace, {
+            executionId: manifest.executionId,
+            hook: event,
+            decision: 'deny',
+            tool: name,
+            reason: 'challenge_findings_incomplete'
+          });
+          return deny(
+            'Savyre blocked an incomplete challenge_findings.json write.',
+            String(
+              writeGate?.reason ||
+                'Use status "completed" after a real critique. Do not write passed: true without status.'
+            )
+          );
+        }
+      }
     }
   }
 

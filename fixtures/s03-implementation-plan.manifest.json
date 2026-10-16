@@ -12,7 +12,7 @@
   "deniedTools": ["Delete", "Shell", "Task"],
   "allowedPaths": [
     "stages/s03_implementation_plan/implementation_plan.md",
-    "stages/s03_implementation_plan/implementation_backlog.json"
+    "stages/s03_implementation_plan/implementation_backlog.draft.json"
   ],
   "excludedPaths": [".env", ".env.local", ".env.production", "id_rsa", "id_ed25519", "*.pem", "credentials.json", "secrets.json"],
   "evidenceRequired": true,

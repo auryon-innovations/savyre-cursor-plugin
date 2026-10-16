@@ -3520,7 +3520,12 @@ async function handleHook(input) {
   if (event === 'beforeShellExecution' || (event === 'preToolUse' && SHELL_TOOLS.has(name))) {
     const buildReview =
       manifest.stageId === 's04-build-review' || manifest.stageId === '06-implementation';
-    if (isLifecycleCommand(command)) {
+    if (
+      isLifecycleCommand(command, {
+        pluginRoot: PLUGIN_ROOT,
+        cwd: workspace || process.cwd()
+      })
+    ) {
       await appendEvidence(workspace, {
         executionId: manifest.executionId,
         hook: event,

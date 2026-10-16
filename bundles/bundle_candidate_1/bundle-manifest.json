@@ -148,7 +148,7 @@
       "files": [
         {
           "path": "skills/savyre-requirement-challenge/SKILL.md",
-          "sha256": "3de8ba13c4ef48c09d8f8d333589da14243cf1ec491417d14c2b1fcdcc689085"
+          "sha256": "35e67466a87ac86a13065e9f05dc3605129ea6f1434387d1836624a67d2aafa6"
         },
         {
           "path": "skills/savyre-requirement-challenge/references/invocation-map.md",
@@ -281,7 +281,7 @@
       "files": [
         {
           "path": "skills/savyre-stage-implementation-plan/SKILL.md",
-          "sha256": "0d75491f4f3e6d044bfaeb76743df29b7bee2cb25ccb85eb9f3442d5c3b21eb9"
+          "sha256": "c60840472f35f77ba8ee285f1da640a09cdec2d699d7a80ec657919808559e38"
         },
         {
           "path": "skills/savyre-stage-implementation-plan/references/invocation-map.md",

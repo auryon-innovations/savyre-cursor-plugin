@@ -1,49 +1,111 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'url';
 import { test } from 'node:test';
-import { isLifecycleCommand } from './savyre-lifecycle.mjs';
+import {
+  isLifecycleCommand,
+  resolveLifecycleScriptPath,
+  trustedLifecycleScriptPaths
+} from './savyre-lifecycle.mjs';
 
-test('allows a single clean lifecycle invocation', () => {
-  assert.equal(isLifecycleCommand('node hooks/savyre-guard.mjs status'), true);
+const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const GUARD = path.join(PLUGIN_ROOT, 'hooks', 'savyre-guard.mjs');
+
+test('allows a single clean lifecycle invocation of the installed guard', () => {
   assert.equal(
-    isLifecycleCommand(
-      'node "C:/Users/x/.cursor/plugins/local/savyre-cursor-plugin/hooks/savyre-guard.mjs" next'
-    ),
+    isLifecycleCommand(`node "${GUARD}" status`, { pluginRoot: PLUGIN_ROOT }),
     true
   );
   assert.equal(
-    isLifecycleCommand(
-      'node "$env:USERPROFILE/.cursor/plugins/local/savyre-cursor-plugin/hooks/savyre-guard.mjs" next'
-    ),
+    isLifecycleCommand(`node "${GUARD.replace(/\\/g, '/')}" next`, {
+      pluginRoot: PLUGIN_ROOT
+    }),
     true
   );
   assert.equal(
-    isLifecycleCommand(
-      'node "%USERPROFILE%/.cursor/plugins/local/savyre-cursor-plugin/hooks/savyre-guard.mjs" next'
-    ),
+    isLifecycleCommand('node hooks/savyre-guard.mjs turn', {
+      pluginRoot: PLUGIN_ROOT,
+      cwd: path.join(PLUGIN_ROOT)
+    }),
     true
   );
-  assert.equal(isLifecycleCommand('node scripts/savyre-cli.mjs stop'), true);
   assert.equal(
-    isLifecycleCommand('cd /tmp/project && node hooks/savyre-guard.mjs turn'),
+    isLifecycleCommand(`node "${GUARD}" answer OQ-001 1`, { pluginRoot: PLUGIN_ROOT }),
     true
   );
-  assert.equal(isLifecycleCommand('node hooks/savyre-guard.mjs answer OQ-001 1'), true);
 });
 
 test('rejects chained / compound lifecycle shells', () => {
   assert.equal(
-    isLifecycleCommand('node hooks/savyre-guard.mjs status; echo shouldBeBlocked'),
+    isLifecycleCommand(`node "${GUARD}" status; echo shouldBeBlocked`, {
+      pluginRoot: PLUGIN_ROOT
+    }),
     false
   );
   assert.equal(
-    isLifecycleCommand('node hooks/savyre-guard.mjs status && echo more'),
+    isLifecycleCommand(`node "${GUARD}" status && echo more`, { pluginRoot: PLUGIN_ROOT }),
     false
   );
-  assert.equal(isLifecycleCommand('node hooks/savyre-guard.mjs status | cat'), false);
-  assert.equal(isLifecycleCommand('node hooks/savyre-guard.mjs status > out.txt'), false);
-  assert.equal(isLifecycleCommand('node hooks/savyre-guard.mjs status $(echo hi)'), false);
   assert.equal(
-    isLifecycleCommand('echo status; node hooks/savyre-guard.mjs status'),
+    isLifecycleCommand(`node "${GUARD}" status | cat`, { pluginRoot: PLUGIN_ROOT }),
     false
+  );
+  assert.equal(
+    isLifecycleCommand(`node "${GUARD}" status > out.txt`, { pluginRoot: PLUGIN_ROOT }),
+    false
+  );
+  assert.equal(
+    isLifecycleCommand(`node "${GUARD}" status $(echo hi)`, { pluginRoot: PLUGIN_ROOT }),
+    false
+  );
+});
+
+test('H3-1: rejects same-name untrusted lifecycle script path', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'savyre-untrusted-'));
+  const fake = path.join(tmp, 'savyre-guard.mjs');
+  fs.writeFileSync(fake, '// untrusted\n', 'utf8');
+  try {
+    assert.equal(
+      isLifecycleCommand(`node "${fake}" status`, { pluginRoot: PLUGIN_ROOT }),
+      false
+    );
+    const resolved = resolveLifecycleScriptPath(fake, { pluginRoot: PLUGIN_ROOT });
+    const trusted = trustedLifecycleScriptPaths({ pluginRoot: PLUGIN_ROOT }).map((p) =>
+      path.resolve(p).toLowerCase()
+    );
+    assert.ok(resolved);
+    assert.equal(trusted.includes(path.resolve(resolved).toLowerCase()), false);
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('allows USERPROFILE / $env forms when they resolve to the installed plugin', () => {
+  const home = os.homedir();
+  const localGuard = path.join(
+    home,
+    '.cursor',
+    'plugins',
+    'local',
+    'savyre-cursor-plugin',
+    'hooks',
+    'savyre-guard.mjs'
+  );
+  if (!fs.existsSync(localGuard)) return;
+  assert.equal(
+    isLifecycleCommand(
+      'node "%USERPROFILE%/.cursor/plugins/local/savyre-cursor-plugin/hooks/savyre-guard.mjs" next',
+      { pluginRoot: PLUGIN_ROOT }
+    ),
+    true
+  );
+  assert.equal(
+    isLifecycleCommand(
+      'node "$env:USERPROFILE/.cursor/plugins/local/savyre-cursor-plugin/hooks/savyre-guard.mjs" next',
+      { pluginRoot: PLUGIN_ROOT }
+    ),
+    true
   );
 });

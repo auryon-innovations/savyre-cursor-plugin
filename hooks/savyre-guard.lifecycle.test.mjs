@@ -10,6 +10,18 @@ test('allows a single clean lifecycle invocation', () => {
     ),
     true
   );
+  assert.equal(
+    isLifecycleCommand(
+      'node "$env:USERPROFILE/.cursor/plugins/local/savyre-cursor-plugin/hooks/savyre-guard.mjs" next'
+    ),
+    true
+  );
+  assert.equal(
+    isLifecycleCommand(
+      'node "%USERPROFILE%/.cursor/plugins/local/savyre-cursor-plugin/hooks/savyre-guard.mjs" next'
+    ),
+    true
+  );
   assert.equal(isLifecycleCommand('node scripts/savyre-cli.mjs stop'), true);
   assert.equal(
     isLifecycleCommand('cd /tmp/project && node hooks/savyre-guard.mjs turn'),

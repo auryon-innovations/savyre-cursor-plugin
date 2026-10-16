@@ -1190,7 +1190,59 @@ const WRITE_TOOLS = new Set([
 ]);
 const SHELL_TOOLS = new Set(['Shell', 'Bash', 'PowerShell']);
 const SUBAGENT_TOOLS = new Set(['Task', 'Subagent']);
+const ASK_QUESTION_TOOLS = new Set(['AskQuestion', 'ask_question', 'askQuestion']);
 const DEFAULT_EXCLUDED = ['.env', '.env.local', '.env.production', 'id_rsa', 'id_ed25519', '.pem', 'credentials.json', 'secrets.json'];
+const HOOK_STATE_REL = path.join('.savyre', 'hook-state.json');
+
+function isAskQuestionToolName(name) {
+  const n = String(name || '').trim();
+  if (!n) return false;
+  if (ASK_QUESTION_TOOLS.has(n)) return true;
+  return /askquestion/i.test(n.replace(/[_\s-]/g, ''));
+}
+
+async function readPendingKeepPaths(workspace) {
+  const st = await readJsonIfPresent(path.join(workspace, HOOK_STATE_REL));
+  if (!st || !Array.isArray(st.pendingPaths)) return [];
+  return st.pendingPaths.map((p) => String(p || '').trim()).filter(Boolean);
+}
+
+function needKeepAllUserMessage(paths) {
+  const summary = (paths || []).slice(0, 4).join(', ');
+  if (typeof brain?.chatUserMessage === 'function') {
+    try {
+      return brain.chatUserMessage('need_keep_all', { summary });
+    } catch {
+      /* fall through */
+    }
+  }
+  if (summary) {
+    return `Keep All pending file edits first (${summary}), then run \`/savyre-next\` or use Generate final in the Savyre panel.`;
+  }
+  return 'Keep All pending file edits first, then run `/savyre-next` or use Generate final in the Savyre panel.';
+}
+
+async function blockIfPendingKeepAll(workspace, action) {
+  const pending = await readPendingKeepPaths(workspace);
+  if (!pending.length) return null;
+  return withUserMessage(
+    {
+      ok: false,
+      action,
+      unlocksStage: false,
+      reason: 'pending_keep_all',
+      pendingPaths: pending
+    },
+    needKeepAllUserMessage(pending)
+  );
+}
+
+function injectNeedsAskQuestion(inject) {
+  if (!inject || typeof inject !== 'object') return false;
+  if (inject.forbidAskQuestion === true) return false;
+  if (inject.askQuestionSatisfied === true) return false;
+  return Boolean(inject.askQuestion || inject.composer?.askQuestion);
+}
 
 /** Prefix agent recipes so models do not echo lock/enforcement text into developer chat. */
 function wrapAgentOnlyMessage(message) {
@@ -2704,7 +2756,14 @@ function contentsFromInput(input) {
   );
 }
 
-function parseEvidenceMap(raw) {
+function parseEvidenceMap(raw, opts = {}) {
+  if (typeof brain?.parseEvidenceMap === 'function') {
+    try {
+      return brain.parseEvidenceMap(raw, opts);
+    } catch {
+      /* fall through */
+    }
+  }
   if (!raw || typeof raw !== 'object') return { ok: false };
   if (raw.schemaVersion !== '1.0' || !Array.isArray(raw.items)) return { ok: false };
   const types = new Set(['code', 'test', 'doc', 'not-found']);
@@ -2715,13 +2774,123 @@ function parseEvidenceMap(raw) {
       return { ok: false };
     }
   }
-  if (raw.greenfield === true) return { ok: true };
-  if (!raw.items.length) return { ok: false };
   const observed = raw.items.filter(
     (i) => i.evidenceType !== 'not-found' && !isWorkflowEvidencePath(i.path)
   );
+  // Never treat bare greenfield:true as ready when the repo has application code.
+  if (opts.hasApplicationCode === true) {
+    if (raw.greenfield === true || !observed.length) return { ok: false };
+    return { ok: true };
+  }
+  if (raw.greenfield === true) return { ok: true };
+  if (!raw.items.length) return { ok: false };
   if (!observed.length) return { ok: false };
   return { ok: true };
+}
+
+async function detectHasApplicationCode(workspace) {
+  if (typeof brain?.workspaceHasProductSource === 'function') {
+    try {
+      return (await brain.workspaceHasProductSource(workspace)) === true;
+    } catch {
+      /* fall through */
+    }
+  }
+  // Conservative local heuristic matching skipCodeDiscovery product markers.
+  const markers = [
+    'package.json',
+    'client/package.json',
+    'server/package.json',
+    'src',
+    'app',
+    'frontend',
+    'backend'
+  ];
+  for (const rel of markers) {
+    if (existsSync(path.join(workspace, ...rel.split('/')))) return true;
+  }
+  return false;
+}
+
+function isEvidenceMapPathLocal(filePath) {
+  if (typeof brain?.isEvidenceMapPath === 'function') {
+    try {
+      return brain.isEvidenceMapPath(filePath) === true;
+    } catch {
+      /* fall through */
+    }
+  }
+  const n = String(filePath || '')
+    .replace(/\\/g, '/')
+    .toLowerCase();
+  return /(?:^|\/)(?:discovery_evidence|evidence[_-]map)\.json$/.test(n);
+}
+
+function isEvidenceMapGateCompleteLocal(raw, opts = {}) {
+  if (typeof brain?.isEvidenceMapGateComplete === 'function') {
+    try {
+      return brain.isEvidenceMapGateComplete(raw, opts) === true;
+    } catch {
+      /* fall through */
+    }
+  }
+  if (typeof brain?.isEvidenceGroundingComplete === 'function') {
+    try {
+      const parsed =
+        typeof brain.parseEvidenceMap === 'function'
+          ? brain.parseEvidenceMap(raw, { hasApplicationCode: opts.hasApplicationCode })
+          : parseEvidenceMap(raw, opts);
+      if (!parsed?.ok) return false;
+      const doc = parsed.value || raw;
+      return brain.isEvidenceGroundingComplete(doc, opts) === true;
+    } catch {
+      /* fall through */
+    }
+  }
+  if (opts.hasApplicationCode !== true && opts.hasApplicationCode !== false) return false;
+  if (!parseEvidenceMap(raw, opts).ok) return false;
+  if (opts.hasApplicationCode === true) {
+    if (raw?.greenfield === true) return false;
+    const status = typeof raw?.status === 'string' ? raw.status.trim() : '';
+    if (status === 'pending') return false;
+    const items = Array.isArray(raw?.items) ? raw.items : [];
+    const observed = items.filter(
+      (i) => i && i.evidenceType !== 'not-found' && !isWorkflowEvidencePath(i.path)
+    );
+    return observed.length > 0 && (status === 'completed' || status === '');
+  }
+  // Verified no-code: greenfield empty is ready only when completed (or legacy greenfield).
+  const status = typeof raw?.status === 'string' ? raw.status.trim() : '';
+  if (status === 'pending') return false;
+  return raw?.greenfield === true || status === 'completed';
+}
+
+function evaluateEvidenceMapWriteLocal(raw, opts = {}) {
+  if (typeof brain?.evaluateEvidenceMapWrite === 'function') {
+    try {
+      return brain.evaluateEvidenceMapWrite(raw, opts);
+    } catch {
+      /* fall through */
+    }
+  }
+  if (!raw || typeof raw !== 'object') {
+    return { ok: false, reason: 'Evidence map is missing.' };
+  }
+  if (raw.greenfield === true && opts.hasApplicationCode === true) {
+    return {
+      ok: false,
+      reason:
+        'Repos with application code cannot use empty greenfield evidence. Add observed application path items (evidenceType code/test/doc).'
+    };
+  }
+  const status = typeof raw.status === 'string' ? raw.status.trim() : '';
+  if (status === 'pending') return { ok: true, pendingScaffold: true };
+  if (isEvidenceMapGateCompleteLocal(raw, opts)) return { ok: true, pendingScaffold: false };
+  return {
+    ok: false,
+    reason:
+      'discovery_evidence.json must use status "completed" with application path items when the repo has product source (greenfield empty only when there is no application code).'
+  };
 }
 
 async function loadChatPass(workspace, stageId) {
@@ -2757,7 +2926,14 @@ async function loadChatPass(workspace, stageId) {
     stageId === '03-codebase-discovery' || stageId === 's02-code-discovery';
   const challengeComplete =
     !isChallengeStage || isChallengeFindingsGateCompleteLocal(challengeRaw);
-  const evidenceReady = !isEvidenceStage || parseEvidenceMap(evidenceRaw).ok;
+  let evidenceReady = true;
+  if (isEvidenceStage) {
+    const hasApplicationCode = await detectHasApplicationCode(workspace);
+    evidenceReady = isEvidenceMapGateCompleteLocal(evidenceRaw, {
+      hasApplicationCode,
+      repoRoot: workspace
+    });
+  }
   return { challengeComplete, evidenceReady };
 }
 
@@ -3059,9 +3235,14 @@ async function readChatInjectState(workspace) {
 
 async function writeChatInjectState(workspace, state) {
   try {
+    const next = { ...(state || {}) };
+    // New open-question payload requires a fresh AskQuestion tool call.
+    if (next.askQuestion && next.forbidAskQuestion !== true && next.askQuestionSatisfied !== true) {
+      next.askQuestionSatisfied = false;
+    }
     const dir = path.join(workspace, '.savyre');
     await fs.mkdir(dir, { recursive: true });
-    await fs.writeFile(path.join(workspace, CHAT_INJECT_REL), `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+    await fs.writeFile(path.join(workspace, CHAT_INJECT_REL), `${JSON.stringify(next, null, 2)}\n`, 'utf8');
   } catch {
     /* best-effort */
   }
@@ -3349,6 +3530,25 @@ async function handleHook(input) {
       });
       return allow();
     }
+    // Open question pending: do not let Shell wander; call AskQuestion (or lifecycle answer) first.
+    try {
+      const inject = await readChatInjectState(workspace);
+      if (injectNeedsAskQuestion(inject) && !/\banswer\b/i.test(String(command || ''))) {
+        await appendEvidence(workspace, {
+          executionId: manifest.executionId,
+          hook: event,
+          decision: 'deny',
+          tool: 'Shell',
+          reason: 'ask_question_required'
+        });
+        return deny(
+          'Savyre blocked Shell while an open question picker is required.',
+          'Call Cursor AskQuestion first with JSON askQuestion. Do not print Options 1/2/3 in chat. After they pick, run /savyre-answer.'
+        );
+      }
+    } catch {
+      /* keep going */
+    }
     if (buildReview && isBuildReviewTestCommand(command)) {
       await appendEvidence(workspace, {
         executionId: manifest.executionId,
@@ -3395,6 +3595,24 @@ async function handleHook(input) {
   }
 
   if (event === 'preToolUse' && SUBAGENT_TOOLS.has(name)) {
+    try {
+      const inject = await readChatInjectState(workspace);
+      if (injectNeedsAskQuestion(inject)) {
+        await appendEvidence(workspace, {
+          executionId: manifest.executionId,
+          hook: event,
+          decision: 'deny',
+          tool: name,
+          reason: 'ask_question_required'
+        });
+        return deny(
+          'Savyre blocked a subagent while an open question picker is required.',
+          'Call Cursor AskQuestion first with JSON askQuestion. Do not print Options 1/2/3 in chat.'
+        );
+      }
+    } catch {
+      /* continue */
+    }
     await appendEvidence(workspace, {
       executionId: manifest.executionId,
       hook: event,
@@ -3408,7 +3626,48 @@ async function handleHook(input) {
     );
   }
 
+  if (event === 'preToolUse' && isAskQuestionToolName(name)) {
+    try {
+      const prior = await readChatInjectState(workspace);
+      if (prior && injectNeedsAskQuestion(prior)) {
+        await writeChatInjectState(workspace, {
+          ...prior,
+          askQuestionSatisfied: true,
+          askQuestionSatisfiedAt: new Date().toISOString()
+        });
+      }
+    } catch {
+      /* allow picker */
+    }
+    await appendEvidence(workspace, {
+      executionId: manifest.executionId,
+      hook: event,
+      decision: 'allow',
+      tool: name,
+      reason: 'ask_question'
+    });
+    return allow();
+  }
+
   if (event === 'preToolUse' && WRITE_TOOLS.has(name)) {
+    try {
+      const inject = await readChatInjectState(workspace);
+      if (injectNeedsAskQuestion(inject)) {
+        await appendEvidence(workspace, {
+          executionId: manifest.executionId,
+          hook: event,
+          decision: 'deny',
+          tool: name,
+          reason: 'ask_question_required'
+        });
+        return deny(
+          'Savyre blocked a write while an open question picker is required.',
+          'Call Cursor AskQuestion first with JSON askQuestion (do not print Options 1/2/3). After they pick, run /savyre-answer.'
+        );
+      }
+    } catch {
+      /* keep going */
+    }
     const writeOk = manifest.writeMode === 'read_write';
     const fp = String(fileFromInput(input) || '').trim();
     if (!fp) {
@@ -3532,6 +3791,46 @@ async function handleHook(input) {
             String(
               writeGate?.reason ||
                 'Use status "completed" after a real critique. Do not write passed: true without status.'
+            )
+          );
+        }
+      }
+    }
+    // S02 lock fix: reject empty greenfield discovery_evidence when the repo has product source.
+    if (writeOk && fp && isEvidenceMapPathLocal(fp)) {
+      const rawText = String(contentsFromInput(input) || '').trim();
+      if (rawText) {
+        let rawJson = null;
+        try {
+          rawJson = JSON.parse(rawText);
+        } catch {
+          await appendEvidence(workspace, {
+            executionId: manifest.executionId,
+            hook: event,
+            decision: 'deny',
+            tool: name,
+            reason: 'discovery_evidence_invalid_json'
+          });
+          return deny(
+            'Savyre blocked an invalid discovery_evidence.json write.',
+            'Write valid JSON with schemaVersion 1.0, status "completed" (or "pending"), and an items array.'
+          );
+        }
+        const hasApplicationCode = await detectHasApplicationCode(workspace);
+        const writeGate = evaluateEvidenceMapWriteLocal(rawJson, { hasApplicationCode });
+        if (!writeGate || writeGate.ok === false) {
+          await appendEvidence(workspace, {
+            executionId: manifest.executionId,
+            hook: event,
+            decision: 'deny',
+            tool: name,
+            reason: 'discovery_evidence_incomplete'
+          });
+          return deny(
+            'Savyre blocked an incomplete discovery_evidence.json write.',
+            String(
+              writeGate?.reason ||
+                'Add application path evidence items when the repo has product source. Do not use empty greenfield.'
             )
           );
         }
@@ -5128,6 +5427,8 @@ function extractOriginalTaskFromBrief(briefText) {
 
 async function cmdConfirm() {
   const workspace = await findWorkspaceFromHook({ cwd: process.cwd() });
+  const keepBlocked = await blockIfPendingKeepAll(workspace, 'confirm');
+  if (keepBlocked) return keepBlocked;
   const session = await readJsonIfPresent(path.join(workspace, '.savyre', 'session.json'));
   if (!sessionLooksActive(session)) {
     return withUserMessage(
@@ -5299,6 +5600,8 @@ async function cmdConfirm() {
 
 async function cmdGenerateFinal() {
   const workspace = await findWorkspaceFromHook({ cwd: process.cwd() });
+  const keepBlocked = await blockIfPendingKeepAll(workspace, 'generate_final');
+  if (keepBlocked) return keepBlocked;
   const match = await requireChatPanelMatch(workspace, 'generate_final');
   if (!match.ok) return match;
   const stageId = match.panelStageId;
@@ -5373,7 +5676,10 @@ async function cmdGenerateFinal() {
   await ensureLockReadyReview(workspace, stageId);
   if (typeof brain?.ensureStageGateArtifacts === 'function') {
     try {
-      await Promise.resolve(brain.ensureStageGateArtifacts(workspace, stageId));
+      const hasApplicationCode = await detectHasApplicationCode(workspace);
+      await Promise.resolve(
+        brain.ensureStageGateArtifacts(workspace, stageId, { hasApplicationCode })
+      );
     } catch {
       /* best-effort scaffold */
     }
@@ -5460,6 +5766,8 @@ async function cmdGenerateFinal() {
  */
 async function cmdNext() {
   const workspace = await findWorkspaceFromHook({ cwd: process.cwd() });
+  const keepBlocked = await blockIfPendingKeepAll(workspace, 'next');
+  if (keepBlocked) return keepBlocked;
   if (isWorkflowFullyComplete(workspace)) {
     return withUserMessage(
       {

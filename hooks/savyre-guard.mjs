@@ -1423,7 +1423,10 @@ async function appendS04RunReceipt(workspace, input) {
     passed: input.passed ?? null,
     failed: input.failed ?? null,
     assertionFailure: input.assertionFailure === true,
-    sourceDigest: input.sourceDigest || null
+    sourceDigest: input.sourceDigest || null,
+    ...(input.kind === 'done_check'
+      ? { checkOk: input.checkOk === true, checkBasis: input.checkBasis || null }
+      : {})
   };
   await appendJsonl(workspace, S04_TEST_RUNS_REL, receipt);
   return receipt;
@@ -1440,9 +1443,19 @@ function shellOutputText(input) {
   return '';
 }
 
+/** Host exit code when the hook payload carries one; null otherwise (never coerce null to 0). */
 function shellExitCode(input) {
   const response = input?.tool_response || input?.toolResponse;
-  const code = input?.exit_code ?? input?.exitCode ?? response?.exit_code ?? response?.exitCode ?? response?.code;
+  const code =
+    input?.exit_code ??
+    input?.exitCode ??
+    input?.exit_status ??
+    input?.result?.exitCode ??
+    response?.exit_code ??
+    response?.exitCode ??
+    response?.exit_status ??
+    response?.code;
+  if (code === null || code === undefined || code === '') return null;
   const n = Number(code);
   return Number.isFinite(n) ? n : null;
 }
@@ -1520,18 +1533,26 @@ async function recordBuildReviewTestRun(workspace, manifest, input) {
 async function recordBuildReviewDoneCheck(workspace, manifest, input) {
   const command = input.command || input.tool_input?.command || '';
   const { itemId } = await testRunBacklogItem(workspace, command);
+  const exitCode = shellExitCode(input);
+  const verdict =
+    typeof brain?.classifyDoneCheckResult === 'function'
+      ? brain.classifyDoneCheckResult({ exitCode, output: shellOutputText(input) })
+      : { ok: exitCode === 0, basis: 'exit_code', reason: `exit ${exitCode}` };
   const receipt = await appendS04RunReceipt(workspace, {
     itemId,
     command,
     kind: 'done_check',
-    exitCode: shellExitCode(input)
+    exitCode,
+    checkOk: verdict.ok === true,
+    checkBasis: verdict.basis || null
   });
   await appendEvidence(workspace, {
     executionId: manifest?.executionId || null,
     hook: 'afterShellExecution',
     decision: 'record',
     tool: 'Shell',
-    reason: `done_check:${itemId || 'no_item'}:${receipt.runId}:exit=${receipt.exitCode}`
+    reason: `done_check:${itemId || 'no_item'}:${receipt.runId}:${verdict.ok ? 'pass' : 'fail'}:${verdict.basis}`,
+    payloadKeys: Object.keys(input || {}).slice(0, 20)
   });
 }
 
@@ -1568,6 +1589,19 @@ async function writeDesignLedger(workspace, ledger) {
   const abs = path.join(workspace, DESIGN_APPROVALS_REL);
   await fs.mkdir(path.dirname(abs), { recursive: true });
   await fs.writeFile(abs, `${JSON.stringify(ledger, null, 2)}\n`, 'utf8');
+}
+
+/**
+ * The runtime issued the design AskQuestion (start/turn payload) for the preview on disk.
+ * Cursor does not route AskQuestion through hooks, so this is the binding point;
+ * the preToolUse AskQuestion path stays as a backup when a host does send it.
+ */
+async function recordIssuedDesignQuestion(workspace) {
+  try {
+    await recordDesignQuestionAsked(workspace);
+  } catch {
+    /* an unrecorded question only means the decision cannot be recorded yet */
+  }
 }
 
 /** AskQuestion for an awaiting design checkpoint: bind the question to the preview shown. */
@@ -4370,7 +4404,7 @@ async function testSetupBlocker(workspace, stageId, itemId) {
   if (String(item?.tddApplicability || '').toLowerCase() !== 'required') return null;
   let plan;
   try {
-    plan = brain.planTestRunnerSetup(workspace);
+    plan = brain.planTestRunnerSetup(workspace, { fileScope: item?.fileScope || [] });
   } catch {
     return null;
   }
@@ -4378,11 +4412,11 @@ async function testSetupBlocker(workspace, stageId, itemId) {
   const userMessage =
     typeof brain.testRunnerSetupUserMessage === 'function'
       ? brain.testRunnerSetupUserMessage(plan, itemId)
-      : `The test runner isn't set up yet. Run \`/savyre-setup-tests\` to install it, then I'll continue with ${itemId}.`;
+      : `The test runner isn't set up yet. Run \`/savyre-next\` to install it, then I'll continue with ${itemId}.`;
   return {
     plan,
     userMessage,
-    agentMessage: `TEST RUNNER MISSING for ${itemId} (${(plan.missing || []).join(', ')}). Do NOT install anything and do NOT run npm install / npx playwright install. You may write the failing spec file for ${itemId}, but do not write product source yet. Speak userMessage exactly and wait for the developer to run /savyre-setup-tests; never run it yourself or add "yes".`
+    agentMessage: `TEST RUNNER MISSING for ${itemId} (${(plan.missing || []).join(', ')}). Do NOT install anything and do NOT run npm install / npx playwright install. You may write the failing spec file for ${itemId}, but do not write product source yet. Speak userMessage exactly and wait for the developer to run /savyre-next (it runs the fixed install); never run /savyre-next or /savyre-setup-tests yourself.`
   };
 }
 
@@ -4607,6 +4641,7 @@ async function cmdStart(userText) {
       ? loadDesignCheckpoint(workspace)
       : null;
   const designChat = designCp ? designCheckpointChat(designCp) : null;
+  if (designChat && stageId === 's04-build-review') await recordIssuedDesignQuestion(workspace);
   if (designChat) {
     message = designChat.agentMessage;
   }
@@ -5524,6 +5559,7 @@ async function cmdTurn() {
       ? loadDesignCheckpoint(workspace)
       : null;
   const designChat = designCp ? designCheckpointChat(designCp) : null;
+  if (designChat && stageId === 's04-build-review') await recordIssuedDesignQuestion(workspace);
   const setupBlock =
     !next && !designChat && !backlogBlocked && nextBacklogItemId
       ? await testSetupBlocker(workspace, stageId, nextBacklogItemId)
@@ -5664,16 +5700,31 @@ async function cmdAnswerDesign(workspace, stageId, backlogId, rest) {
   }
   await writeDesignLedger(workspace, recorded.ledger);
   const reportAbs = path.join(workspace, 'stages', 's04_build_review', 'tasks', backlogId, 'ui_ux_report.json');
-  const report = await readJsonIfPresent(reportAbs);
-  if (report && report.artifactType === 'ui_ux_report') {
-    const projected =
-      decision === 'approved'
-        ? typeof brain.markUiUxDesignApproved === 'function'
+  const raw = await readJsonIfPresent(reportAbs);
+  if (raw && raw.artifactType === 'ui_ux_report') {
+    // Agent-written reports may carry review.limitations as a string; normalize before projecting.
+    const lim = raw.review?.limitations;
+    const report = {
+      ...raw,
+      mockup: { ...(raw.mockup || {}) },
+      review: {
+        ...(raw.review || {}),
+        limitations: Array.isArray(lim) ? lim : lim ? [String(lim)] : []
+      }
+    };
+    const fallbackCheckpoint = decision === 'approved' ? 'approved' : 'changes_requested';
+    let projected;
+    try {
+      projected =
+        decision === 'approved'
           ? brain.markUiUxDesignApproved(report, note)
-          : { ...report, mockup: { ...report.mockup, designCheckpoint: 'approved' } }
-        : typeof brain.markUiUxDesignChangesRequested === 'function'
-          ? brain.markUiUxDesignChangesRequested(report, note)
-          : { ...report, mockup: { ...report.mockup, designCheckpoint: 'changes_requested' } };
+          : brain.markUiUxDesignChangesRequested(report, note);
+    } catch {
+      projected = null;
+    }
+    if (!projected) {
+      projected = { ...report, mockup: { ...report.mockup, designCheckpoint: fallbackCheckpoint } };
+    }
     await fs.writeFile(reportAbs, `${JSON.stringify(projected, null, 2)}\n`, 'utf8');
   }
   return withUserMessage(
@@ -6277,6 +6328,21 @@ async function cmdNext() {
   if (panelStageId === 's04-build-review' || panelStageId === '06-implementation') {
     const backlog = backlogFlags(await readBacklogWork(workspace, panelStageId));
     if (backlog.nextBacklogItemId) {
+      // Developer-typed /savyre-next is the approval for the fixed test-runner install.
+      const designPending = panelStageId === 's04-build-review' && Boolean(loadDesignCheckpoint(workspace));
+      const setup = designPending
+        ? null
+        : await testSetupBlocker(workspace, panelStageId, backlog.nextBacklogItemId);
+      if (setup) {
+        const installed = await cmdSetupTests('yes');
+        if (installed?.ok !== true) return installed;
+        const turned = await cmdTurn();
+        return {
+          ...turned,
+          testSetup: { installed: true, steps: installed.steps || [] },
+          userMessage: `Installed the test runner. ${turned?.userMessage || ''}`.trim()
+        };
+      }
       return cmdTurn();
     }
     if (backlog.backlogBlocked) {
@@ -6429,7 +6495,13 @@ async function cmdSetupTests(confirmWord) {
   if (typeof brain?.planTestRunnerSetup !== 'function' || typeof brain?.runTestRunnerSetup !== 'function') {
     return withUserMessage({ ok: false, action: 'setup-tests', unlocksStage: false }, BRAIN_MISSING_USER_MESSAGE);
   }
-  const plan = brain.planTestRunnerSetup(workspace);
+  let fileScope = [];
+  try {
+    fileScope = (await activeS04Scope(workspace)).activeItem?.fileScope || [];
+  } catch {
+    /* no backlog: repo-level setup only */
+  }
+  const plan = brain.planTestRunnerSetup(workspace, { fileScope });
   if (plan.ready) {
     return withUserMessage(
       { ok: true, action: 'setup-tests', ready: true, stack: plan.stack, unlocksStage: false },
@@ -6444,7 +6516,9 @@ async function cmdSetupTests(confirmWord) {
   }
   const confirmed = String(confirmWord || '').trim().toLowerCase() === 'yes';
   if (!confirmed) {
-    const list = plan.steps.map((s) => `\`${s.command}\``).join(' then ');
+    const list = plan.steps
+      .map((s) => `\`${s.command}\`${s.cwd ? ` (in \`${s.cwd}/\`)` : ''}`)
+      .join(' then ');
     return withUserMessage(
       {
         ok: false,
@@ -6458,7 +6532,7 @@ async function cmdSetupTests(confirmWord) {
       `This will run ${list} in this project (downloads from the internet). Run \`/savyre-setup-tests yes\` to confirm.`
     );
   }
-  const { receipt, after } = brain.runTestRunnerSetup(workspace, { approvedVia: 'chat-lifecycle' });
+  const { receipt, after } = brain.runTestRunnerSetup(workspace, { approvedVia: 'chat-lifecycle', fileScope });
   await appendEvidence(workspace, {
     executionId: null,
     hook: 'cli',

@@ -184,6 +184,27 @@ test('setup-tests: lifecycle-allowed, shows the fixed plan, and does not install
   }
 });
 
+test('S4-F3: design approval binds to the runtime-issued question and the current preview', () => {
+  const ledgerPath = path.join(ws, '.savyre', 'design-approvals.json');
+  const designDir = path.join(ws, 'stages', 's04_build_review', 'tasks', 'FS-001', 'design');
+  write('stages/s04_build_review/tasks/FS-001/design/preview.html', '<html>v1</html>');
+  write('stages/s04_build_review/tasks/FS-001/ui_ux_report.json', {
+    artifactType: 'ui_ux_report',
+    applicability: { required: true, reason: 'ui' },
+    binding: { backlogItemIds: ['FS-001'] },
+    mockup: { treatment: 'image_set', designMedium: 'images', designCheckpoint: 'awaiting_human', designImageRels: ['stages/s04_build_review/tasks/FS-001/design/preview.html'] },
+    review: { outcome: 'pending', limitations: [] }
+  });
+  // The design question is recorded against the preview on disk.
+  hook({ hook_event_name: 'preToolUse', tool_name: 'AskQuestion', tool_input: {} });
+  assert.equal(fs.existsSync(ledgerPath), true);
+  const asked = JSON.parse(fs.readFileSync(ledgerPath, 'utf8'));
+  assert.ok(asked.asked['FS-001']?.previewDigest);
+  assert.ok(fs.existsSync(designDir));
+  fs.rmSync(path.join(ws, 'stages', 's04_build_review', 'tasks', 'FS-001'), { recursive: true, force: true });
+  fs.rmSync(ledgerPath, { force: true });
+});
+
 test('S4-F2: report "Status: applied" alone does not release FS-002', () => {
   write(
     'stages/s04_build_review/change_report.md',

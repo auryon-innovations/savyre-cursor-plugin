@@ -205,7 +205,7 @@
       "files": [
         {
           "path": "skills/savyre-stage-build-review/SKILL.md",
-          "sha256": "9dee951c1e057e91a3b54652e76a53bc5994f3050f81a935890c2c870ff95b6e"
+          "sha256": "4188ecb90708da61085cb7821ea294a6ba8d6802e18e6aaaa33d985dcfe4522f"
         },
         {
           "path": "skills/savyre-stage-build-review/references/invocation-map.md",
@@ -338,7 +338,7 @@
       "files": [
         {
           "path": "skills/savyre-test-author/SKILL.md",
-          "sha256": "caef6e8a84a12b71e30caf990145d29215e39bf9371bc846d7615c34bbcc1d58"
+          "sha256": "7e17ef704ee49c74ff02d74006709936e4ed58ebdfcf70c6c2cb2cc6d09d6309"
         },
         {
           "path": "skills/savyre-test-author/references/invocation-map.md",

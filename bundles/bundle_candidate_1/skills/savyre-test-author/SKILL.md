@@ -26,9 +26,11 @@ Choose the Playwright flavor in this order:
 3. Else if Maven/Gradle Playwright Java or .NET Playwright is configured, use that flavor.
 4. Else use **Playwright JS/TS**: write `tests/<item>.spec.ts` (or `e2e/`) and run `npx playwright test`.
 
-**Missing runner or browsers is a blocked setup item, not RED and not permission to install.** S04 shell allows only the installed runner's test subcommand (no `npm install`, `npx playwright install`, `codegen`, redirection, or output-writing flags). If `@playwright/test` or its browsers are absent, write the spec, record the item as blocked on setup under Deviations and Blockers, and ask the developer to run `/savyre-setup-tests` (or Command Palette → **Savyre: Install Test Runner**). The runtime then runs fixed install commands after their approval. Never run that command or add `yes` yourself.
+**Missing runner or browsers is a blocked setup item, not RED and not permission to install.** S04 shell allows only the installed runner's test subcommand (no `npm install`, `npx playwright install`, `codegen`, redirection, or output-writing flags). If `@playwright/test` or its browsers are absent, write the spec, record the item as blocked on setup under Deviations and Blockers, and speak the runtime `userMessage`, which asks the developer to run `/savyre-next` (or Command Palette → **Savyre: Install Test Runner**). The runtime then runs fixed install commands after their approval. Never run `/savyre-next` or `/savyre-setup-tests` yourself.
 
 Node and plain Python unit files may still exist for non-AC helpers, but AC titles must be covered by Playwright checks unless the human records an exemption.
+
+**Dev servers in specs:** start the app with Playwright's `webServer` config (or a helper) using a bounded wait — at most 120 s for a cold start, 60 s otherwise — and fail fast with a clear "dev server did not start" error. A server that does not start is a setup failure, not RED; do not wait several minutes per run.
 
 The runtime records every test run as a receipt with executed assertion counts. A syntax/import/setup error or a zero-test run is not RED, and exit code 0 with no executed assertion is not GREEN. RED must be an executed assertion or locator failure for the intended behavior; GREEN must be the same item's assertions passing after the source changed. The test title includes the AC id.
 

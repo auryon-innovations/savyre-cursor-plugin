@@ -6,7 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 export const LIFECYCLE_VERBS =
-  'run|start|status|stop|turn|confirm|next|answer|action|reset-stage|reset-workflow';
+  'run|start|status|stop|turn|confirm|next|answer|action|reset-stage|reset-workflow|setup-tests';
 
 const LIFECYCLE_VERB_SET = new Set(LIFECYCLE_VERBS.split('|'));
 

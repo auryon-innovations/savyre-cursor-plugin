@@ -1,10 +1,10 @@
 # Build mode
 
-For user-facing work, design exploration is **proportionate**. Use Cursor Canvas when it is available. When Canvas is unavailable, interactive `preview.html` is the approval view for substantial new screens. Apply the **hi-fi design bar** in `standards.md` — clients should not need a custom prompt for a clear mockup.
+For user-facing work, design exploration is **proportionate**. Interactive `preview.html` is the approval view for substantial new screens. Apply the **hi-fi design bar** in `standards.md` — clients should not need a custom prompt for a clear mockup.
 
 1. Identify the affected journey, requirements, and permitted changes. Inspect the **target package** stack before proposing components. Record a **component strategy** (reuse existing / extend shadcn / introduce shadcn only for new unconstrained React / other stack / explicit migration).
 2. Select mockup treatment:
-  - Substantial new screen: **interactive** `preview.html` (`treatment: image_set`, `designMedium: images`). Persist `designSpecification` + `designBrief`. Meet the **preview.html bar** in `standards.md` (clickable pages plus the real visual design). Use Cursor Canvas for this approval when it is available. When Canvas is unavailable, use this `preview.html` path.
+  - Substantial new screen: **interactive** `preview.html` (`treatment: image_set`, `designMedium: images`). Persist `designSpecification` + `designBrief`. Meet the **preview.html bar** in `standards.md` (clickable pages plus the real visual design). This `preview.html` path is the only approval view; do not use Cursor Canvas for approval.
   - Small spacing/label correction: `treatment: none`, `designCheckpoint: not_required` — implement directly with existing conventions.
   - Backend-only: skip (`not_applicable`; `designCheckpoint: not_required`; `designMedium: none`).
 3. **Do not** introduce React, shadcn, Tailwind, or a second library solely to enable this workflow. Existing apps reuse their library. shadcn MCP may **discover/install** only on authorized S04 writes, after inspecting local variants. If MCP is down, use installed components.

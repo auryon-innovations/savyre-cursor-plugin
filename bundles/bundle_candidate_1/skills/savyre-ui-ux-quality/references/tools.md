@@ -29,7 +29,7 @@ Do not treat `tests/*.spec.ts` pass logs or `redRunId`/`greenRunId` as completin
 - Figma: consume supplied approved designs/components/prototypes through available authorized access.
 - Penpot: optional interface design/prototyping workspace.
 - Canva: optional supporting visual assets when selected, not the default interactive UI implementation.
-- Design approval for a substantial screen uses Cursor Canvas when it is available. When Canvas is unavailable, use interactive `preview.html` plus PNG stills. Not production UI, not stage acceptance. Persist a portable design spec.
+- Design approval for a substantial screen uses interactive `preview.html` plus PNG stills (not Cursor Canvas). Not production UI, not stage acceptance. Persist a portable design spec.
 
 Reading a supplied design and editing an external design document are separate actions. External writes require authorization and suitable integration/account permissions. No optional service is a completion dependency by default; if an explicitly required reference cannot be accessed, surface that dependency rather than inventing fidelity.
 
@@ -41,7 +41,7 @@ Prefer license-free existing tooling, but do not promise zero model, compute, ho
 Honor `features.canvasShadcnUi` (default on). Setup and fallbacks:
 
 - Configure shadcn MCP in the **target** `.cursor/mcp.json` only on authorized S04 writes for eligible stacks (`npx shadcn@latest mcp`). Preserve other servers.
-- Design approval is Cursor Canvas when it is available. When Canvas is unavailable, use `tasks/<id>/design/preview.html` (clickable, designed) plus PNG stills.
+- Design approval is `tasks/<id>/design/preview.html` (clickable, designed) plus PNG stills. Canvas availability does not change the approval medium.
 - If MCP is down: installed components / project tooling; same verification bar.
 - Feature off: do not ensure MCP or inject strategy notes.
 

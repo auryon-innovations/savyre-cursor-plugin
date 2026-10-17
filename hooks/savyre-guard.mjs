@@ -1310,58 +1310,123 @@ async function readKey() {
 }
 
 function buildReviewCommandBody(command) {
-  const compact = String(command || '').replace(/\s+/g, ' ').trim();
-  if (!compact || /[`$()]/.test(compact)) return '';
-  const body = compact.replace(/^cd\s+(?:\.{1,2}[/\\])?[\w./\\-]+\s+&&\s+/i, '');
-  if (/[|&;]/.test(body)) return '';
+  if (typeof brain?.buildReviewCommandBody === 'function') return brain.buildReviewCommandBody(command);
+  const raw = String(command || '');
+  if (/[\r\n]/.test(raw.trim())) return '';
+  const compact = raw.replace(/\s+/g, ' ').trim();
+  if (!compact) return '';
+  const cd = compact.match(/^cd\s+((?:\.{1,2}[/\\])?[\w./\\-]+)\s+&&\s+(.+)$/i);
+  if (!cd && /^cd\s+/i.test(compact)) return '';
+  const body = cd ? cd[2] : compact;
+  if (/[`$()<>|&;{}^]/.test(body)) return '';
   return body;
 }
 
+/** S04 test exception: delegated to run-config; without it, no test shell is allowed (fail closed). */
 function isBuildReviewTestCommand(command) {
   if (typeof brain?.isBuildReviewTestCommand === 'function') {
     return brain.isBuildReviewTestCommand(command) === true;
   }
-  const body = buildReviewCommandBody(command);
-  if (!body) return false;
-  return /^(?:npm\s+(?:test|run\s+test)(?:\s+--(?:\s+\S+)*)?|node\s+--test(?:\s+\S+)*|npx\s+(?:vitest|jest)(?:\s+\S+)*|(?:python3?|py)\s+-m\s+pytest(?:\s+\S+)*|pytest(?:\s+\S+)*)$/i.test(
-    body
-  );
+  return false;
 }
 
-/** Project start script or one localhost request. Not install, deploy, or git. */
+/** Project start script or one localhost request. Not install, deploy, git, or redirection. */
 function isBuildReviewCheckCommand(command) {
-  const body = buildReviewCommandBody(command);
-  if (!body) return false;
-  if (/^(?:npm\s+start|npm\s+run\s+(?:dev|start)(?:\s+--(?:\s+\S+)*)?)$/i.test(body)) return true;
-  if (
-    /^(?:curl|curl\.exe)\s+(?:-\S+\s+)*https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?(?:\/\S*)?$/i.test(
-      body
-    )
-  ) {
-    return true;
+  if (typeof brain?.isBuildReviewCheckCommand === 'function') {
+    return brain.isBuildReviewCheckCommand(command) === true;
   }
-  return /^Invoke-WebRequest\s+-Uri\s+['"]?https?:\/\/(?:localhost|127\.0\.0\.1)/i.test(body);
+  return false;
 }
 
 function classifyTestCommandResult(input) {
   if (typeof brain?.classifyTestCommandResult === 'function') {
     return brain.classifyTestCommandResult(input);
   }
-  const output = String(input?.output || '');
-  const code = input?.exitCode;
-  const failCount = output.match(/#\s*fail\s+(\d+)/i);
-  const passCount = output.match(/#\s*pass\s+(\d+)/i);
-  const fails = failCount ? Number(failCount[1]) : null;
-  const passes = passCount ? Number(passCount[1]) : null;
-  const setup =
-    /cannot find module|ERR_MODULE_NOT_FOUND|ENOENT|npm ERR!|is not recognized|not found/i.test(output) &&
-    !(fails && fails > 0) &&
-    !/\bnot ok\b/i.test(output);
-  if (setup && code !== 0) return { kind: 'setup_error', outcome: 'setup_error' };
-  if ((fails !== null && fails > 0) || /\bnot ok\b/i.test(output)) return { kind: 'red', outcome: 'failed' };
-  if (code === 0 || (fails === 0 && passes !== null && passes > 0)) return { kind: 'green', outcome: 'passed' };
-  if (code != null && code !== 0) return { kind: 'red', outcome: 'failed' };
   return null;
+}
+
+const S04_TEST_RUNS_REL = path.join('.savyre', 's04-test-runs.jsonl');
+const S04_OBSERVED_WRITES_REL = path.join('.savyre', 's04-observed-writes.jsonl');
+const S04_PROGRESS_REL = path.join('.savyre', 's04-progress.json');
+const DESIGN_APPROVALS_REL = path.join('.savyre', 'design-approvals.json');
+
+async function appendJsonl(workspace, rel, row) {
+  const abs = path.join(workspace, rel);
+  await fs.mkdir(path.dirname(abs), { recursive: true });
+  await fs.appendFile(abs, `${JSON.stringify(row)}\n`, 'utf8');
+}
+
+async function readS04ProgressLedger(workspace) {
+  const raw = await readJsonIfPresent(path.join(workspace, S04_PROGRESS_REL));
+  const base = { schemaVersion: '1.0', producer: 'runtime', applied: {} };
+  if (!raw || typeof raw !== 'object') return base;
+  return { ...base, ...raw, applied: raw.applied && typeof raw.applied === 'object' ? raw.applied : {} };
+}
+
+async function writeS04ProgressLedger(workspace, ledger) {
+  const abs = path.join(workspace, S04_PROGRESS_REL);
+  await fs.mkdir(path.dirname(abs), { recursive: true });
+  await fs.writeFile(abs, `${JSON.stringify(ledger, null, 2)}\n`, 'utf8');
+}
+
+async function readBacklogTasks(workspace) {
+  const raw = await readJsonIfPresent(
+    path.join(workspace, 'stages', 's03_implementation_plan', 'implementation_backlog.json')
+  );
+  return Array.isArray(raw?.tasks) ? raw.tasks : [];
+}
+
+function findBacklogTask(tasks, id) {
+  const key = String(id || '').toUpperCase();
+  return (tasks || []).find((t) => String(t?.id || '').toUpperCase() === key) || null;
+}
+
+/** Active S04 item and optional dependency-rework item, with their fileScope. */
+async function activeS04Scope(workspace) {
+  const tasks = await readBacklogTasks(workspace);
+  const ledger = await readS04ProgressLedger(workspace);
+  let activeId = ledger.currentItem?.id || null;
+  if (!activeId) activeId = (await readBacklogWork(workspace, 's04-build-review')).nextId;
+  const active = activeId ? findBacklogTask(tasks, activeId) : null;
+  const rework = ledger.reworkItem?.id ? findBacklogTask(tasks, ledger.reworkItem.id) : null;
+  return {
+    tasks,
+    ledger,
+    activeItem: active ? { id: String(active.id), fileScope: active.fileScope || [] } : null,
+    reworkItem: rework ? { id: String(rework.id), fileScope: rework.fileScope || [] } : null
+  };
+}
+
+async function nextReceiptSeq(workspace) {
+  try {
+    const raw = await fs.readFile(path.join(workspace, S04_TEST_RUNS_REL), 'utf8');
+    return raw.split(/\r?\n/).filter((l) => l.trim()).length + 1;
+  } catch {
+    return 1;
+  }
+}
+
+async function appendS04RunReceipt(workspace, input) {
+  const seq = await nextReceiptSeq(workspace);
+  const runId = `run-${Date.now().toString(36)}-${seq}`;
+  const receipt = {
+    schemaVersion: '1.0',
+    producer: 'runtime',
+    runId,
+    seq,
+    at: new Date().toISOString(),
+    itemId: input.itemId || null,
+    command: String(input.command || '').slice(0, 500),
+    kind: input.kind,
+    exitCode: input.exitCode ?? null,
+    tests: input.tests ?? null,
+    passed: input.passed ?? null,
+    failed: input.failed ?? null,
+    assertionFailure: input.assertionFailure === true,
+    sourceDigest: input.sourceDigest || null
+  };
+  await appendJsonl(workspace, S04_TEST_RUNS_REL, receipt);
+  return receipt;
 }
 
 function shellOutputText(input) {
@@ -1382,24 +1447,43 @@ function shellExitCode(input) {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Runtime receipt for every S04 test run. Only an executed assertion failure becomes a
+ * behavioural RED and only executed passing assertions become GREEN; setup/syntax/zero-test
+ * runs are recorded as receipts but never stamped onto the item's tddEvidence.
+ */
 async function recordBuildReviewTestRun(workspace, manifest, input) {
   const command = input.command || input.tool_input?.command || '';
-  const classified = classifyTestCommandResult({
-    exitCode: shellExitCode(input),
-    output: shellOutputText(input)
+  const exitCode = shellExitCode(input);
+  const classified = classifyTestCommandResult({ exitCode, output: shellOutputText(input) });
+  const { itemId, item } = await testRunBacklogItem(workspace, command);
+  const sourceDigest =
+    item && typeof brain?.computeItemSourceDigest === 'function'
+      ? brain.computeItemSourceDigest(workspace, item.fileScope || [])
+      : null;
+  const receipt = await appendS04RunReceipt(workspace, {
+    itemId,
+    command,
+    kind: classified?.kind || 'unverified',
+    exitCode,
+    tests: classified?.tests,
+    passed: classified?.passed,
+    failed: classified?.failed,
+    assertionFailure: classified?.assertionFailure === true,
+    sourceDigest
   });
-  if (!classified || classified.kind === 'setup_error') {
+  const behaviourRed = classified?.kind === 'red' && classified.assertionFailure === true;
+  const assertionGreen = classified?.kind === 'green';
+  if (!itemId || !(behaviourRed || assertionGreen)) {
     await appendEvidence(workspace, {
       executionId: manifest?.executionId || null,
       hook: 'afterShellExecution',
       decision: 'note',
       tool: 'Shell',
-      reason: classified?.kind || 'test_unclassified'
+      reason: `${receipt.kind}${classified?.kind === 'red' ? ':no_assertion_failure' : ''}:${itemId || 'no_item'}:${receipt.runId}`
     });
     return;
   }
-  const itemId = await testRunBacklogItemId(workspace, command);
-  if (!itemId) return;
   const folder = path.join(workspace, 'stages', 's04_build_review', 'tasks', itemId);
   const metaPath = path.join(folder, 'task_metadata.json');
   const existing = (await readJsonIfPresent(metaPath)) || {
@@ -1409,14 +1493,15 @@ async function recordBuildReviewTestRun(workspace, manifest, input) {
     backlogItemId: itemId
   };
   const prev = existing.tddEvidence && typeof existing.tddEvidence === 'object' ? existing.tddEvidence : {};
-  const runId = `test-${Date.now().toString(36)}-${classified.kind}`;
   const tddEvidence = { ...prev };
-  if (classified.kind === 'red') {
-    tddEvidence.redRunId = runId;
+  if (behaviourRed) {
+    tddEvidence.redRunId = receipt.runId;
     tddEvidence.redOutcome = 'failed';
     tddEvidence.redIsBehaviorFailure = true;
-  } else {
-    tddEvidence.greenRunId = runId;
+    delete tddEvidence.greenRunId;
+    delete tddEvidence.greenOutcome;
+  } else if (tddEvidence.redRunId) {
+    tddEvidence.greenRunId = receipt.runId;
     tddEvidence.greenOutcome = 'passed';
   }
   existing.tddEvidence = tddEvidence;
@@ -1428,24 +1513,77 @@ async function recordBuildReviewTestRun(workspace, manifest, input) {
     hook: 'afterShellExecution',
     decision: 'record',
     tool: 'Shell',
-    reason: `${classified.kind}:${itemId}:${runId}`
+    reason: `${receipt.kind}:${itemId}:${receipt.runId}`
   });
 }
 
-async function testRunBacklogItemId(workspace, command) {
-  const fromCmd = String(command || '').match(/\b((?:FS|NFR|TT|TEST)-\d+)\b/i);
-  if (fromCmd) return fromCmd[1].toUpperCase();
-  try {
-    const report = await fs.readFile(
-      path.join(workspace, 'stages', 's04_build_review', 'change_report.md'),
-      'utf8'
-    );
-    const named = report.match(/\*\*Backlog item(?: this turn)?:\*\*\s*((?:FS|NFR|TT|TEST)-\d+)/i);
-    if (named) return named[1].toUpperCase();
-  } catch {
-    /* no report yet */
-  }
-  return readNextBacklogItemId(workspace, 's04-build-review');
+async function recordBuildReviewDoneCheck(workspace, manifest, input) {
+  const command = input.command || input.tool_input?.command || '';
+  const { itemId } = await testRunBacklogItem(workspace, command);
+  const receipt = await appendS04RunReceipt(workspace, {
+    itemId,
+    command,
+    kind: 'done_check',
+    exitCode: shellExitCode(input)
+  });
+  await appendEvidence(workspace, {
+    executionId: manifest?.executionId || null,
+    hook: 'afterShellExecution',
+    decision: 'record',
+    tool: 'Shell',
+    reason: `done_check:${itemId || 'no_item'}:${receipt.runId}:exit=${receipt.exitCode}`
+  });
+}
+
+/** A run belongs to the active (or dependency-rework) item; a command naming another id does not move it. */
+async function testRunBacklogItem(workspace, command) {
+  const scope = await activeS04Scope(workspace);
+  const allowed = [scope.reworkItem, scope.activeItem].filter(Boolean);
+  const named = String(command || '').match(/\b((?:FS|NFR|TT|TEST)-\d+)\b/i);
+  const namedId = named ? named[1].toUpperCase() : null;
+  const pick =
+    (namedId && allowed.find((i) => i.id.toUpperCase() === namedId)) || scope.reworkItem || scope.activeItem;
+  return { itemId: pick ? pick.id.toUpperCase() : null, item: pick || null };
+}
+
+async function recordS04ObservedWrite(workspace, filePath) {
+  const rel = posixRel(workspace, path.resolve(workspace, String(filePath || '')));
+  if (!rel || rel.startsWith('..')) return;
+  await appendJsonl(workspace, S04_OBSERVED_WRITES_REL, { at: new Date().toISOString(), path: rel });
+}
+
+async function readDesignLedger(workspace) {
+  const raw = await readJsonIfPresent(path.join(workspace, DESIGN_APPROVALS_REL));
+  const base = { schemaVersion: '1.0', producer: 'runtime', asked: {}, items: {} };
+  if (!raw || typeof raw !== 'object') return base;
+  return {
+    ...base,
+    ...raw,
+    asked: raw.asked && typeof raw.asked === 'object' ? raw.asked : {},
+    items: raw.items && typeof raw.items === 'object' ? raw.items : {}
+  };
+}
+
+async function writeDesignLedger(workspace, ledger) {
+  const abs = path.join(workspace, DESIGN_APPROVALS_REL);
+  await fs.mkdir(path.dirname(abs), { recursive: true });
+  await fs.writeFile(abs, `${JSON.stringify(ledger, null, 2)}\n`, 'utf8');
+}
+
+/** AskQuestion for an awaiting design checkpoint: bind the question to the preview shown. */
+async function recordDesignQuestionAsked(workspace) {
+  if (typeof brain?.loadAwaitingUiUxDesignCheckpoint !== 'function') return;
+  if (typeof brain?.computeDesignPreviewDigest !== 'function') return;
+  const awaiting = brain.loadAwaitingUiUxDesignCheckpoint(workspace);
+  if (!awaiting?.backlogId) return;
+  const digest = brain.computeDesignPreviewDigest(workspace, awaiting.backlogId);
+  if (!digest) return;
+  const ledger = await readDesignLedger(workspace);
+  const next =
+    typeof brain.recordDesignAsked === 'function'
+      ? brain.recordDesignAsked(ledger, awaiting.backlogId, digest, new Date().toISOString())
+      : ledger;
+  await writeDesignLedger(workspace, next);
 }
 
 function resolveSavyreCliJs() {
@@ -3152,6 +3290,8 @@ async function chatStageFollowupMessage(workspace, stageId, next) {
       return formatBacklogBlockedMessage(backlog.remainingBacklogIds, backlog.stuckBacklog);
     }
     if (nextBacklogItemId) {
+      const setup = await testSetupBlocker(workspace, stageId, nextBacklogItemId);
+      if (setup) return setup.agentMessage;
       return agentImplementRecipe(nextBacklogItemId);
     }
     if (!aiReady) {
@@ -3584,17 +3724,22 @@ async function handleHook(input) {
     return deny(
       `${stageTitle(manifest.stageId)} does not allow terminal commands.`,
       buildReview
-        ? 'You may run the test command for this backlog item (`npm test`, `node --test`, or `pytest`). You may also run the project start script (`npm start`, `npm run dev`, `npm run start`) and one request to localhost or 127.0.0.1 when the done check needs a running process. A failing test run is recorded as red and a later passing run as green. Do not install packages, deploy, or change git. Use /savyre-stop to leave enforced mode. You cannot approve the stage.'
+        ? 'You may run the installed test command for this backlog item (`npm test`, `node --test`, `npx playwright test`, `pytest`, …) without redirection, pipes, output-file or snapshot-update flags. You may also run the project start script (`npm start`, `npm run dev`, `npm run start`) and one request to localhost or 127.0.0.1 when the done check needs a running process. Only an executed failing assertion is recorded as RED and executed passing assertions as GREEN; setup errors and zero-test runs are not. Do not install packages or browsers (`npx playwright install`), deploy, or change git — a missing runner is a blocked setup item. Use /savyre-stop to leave enforced mode. You cannot approve the stage.'
         : 'Do not run terminal commands. Use /savyre-stop to leave enforced mode. You cannot approve the stage.'
     );
   }
 
   if (event === 'afterShellExecution') {
-    if (
-      (manifest.stageId === 's04-build-review' || manifest.stageId === '06-implementation') &&
-      isBuildReviewTestCommand(command)
-    ) {
-      await recordBuildReviewTestRun(workspace, manifest, input);
+    if (manifest.stageId === 's04-build-review' || manifest.stageId === '06-implementation') {
+      try {
+        if (isBuildReviewTestCommand(command)) {
+          await recordBuildReviewTestRun(workspace, manifest, input);
+        } else if (isBuildReviewCheckCommand(command)) {
+          await recordBuildReviewDoneCheck(workspace, manifest, input);
+        }
+      } catch {
+        /* receipts are best-effort; missing receipts keep the item unverified */
+      }
     }
     return allow();
   }
@@ -3644,6 +3789,13 @@ async function handleHook(input) {
     } catch {
       /* allow picker */
     }
+    if (manifest.stageId === 's04-build-review') {
+      try {
+        await recordDesignQuestionAsked(workspace);
+      } catch {
+        /* a missing asked record only means the decision cannot be recorded yet */
+      }
+    }
     await appendEvidence(workspace, {
       executionId: manifest.executionId,
       hook: event,
@@ -3687,6 +3839,58 @@ async function handleHook(input) {
         'Savyre blocked a write with no destination path.',
         'A recognized write tool must include a file path. Empty or unsupported write envelopes are denied.'
       );
+    }
+    if (writeOk && fp && manifest.stageId === 's04-build-review' && !isAllowedHostCanvasWritePath(fp)) {
+      const rel = posixRel(workspace, path.resolve(workspace, fp));
+      if (rel && !rel.startsWith('..')) {
+        if (typeof brain?.evaluateS04AgentWrite !== 'function') {
+          await appendEvidence(workspace, {
+            executionId: manifest.executionId,
+            hook: event,
+            decision: 'deny',
+            tool: name,
+            reason: 's04_write_policy_unavailable'
+          });
+          return deny(
+            'Savyre blocked a Build & Review write because the write policy could not be loaded.',
+            'Reload the Savyre extension so the runtime is available, then retry.'
+          );
+        }
+        let scope = { activeItem: null, reworkItem: null };
+        try {
+          scope = await activeS04Scope(workspace);
+        } catch {
+          /* no backlog yet: no item scope */
+        }
+        const decision = brain.evaluateS04AgentWrite({
+          relPath: rel,
+          activeItem: scope.activeItem,
+          reworkItem: scope.reworkItem
+        });
+        if (!decision?.ok) {
+          await appendEvidence(workspace, {
+            executionId: manifest.executionId,
+            hook: event,
+            decision: 'deny',
+            tool: name,
+            reason: `s04_${decision?.code || 'write_denied'}:${rel}`
+          });
+          return deny('Savyre blocked a write outside Build & Review ownership.', String(decision?.reason || ''));
+        }
+        if (typeof brain?.evaluateUiUxReportWriteGate === 'function') {
+          const reportGate = brain.evaluateUiUxReportWriteGate(workspace, fp, String(contentsFromInput(input) || ''));
+          if (reportGate && reportGate.ok === false) {
+            await appendEvidence(workspace, {
+              executionId: manifest.executionId,
+              hook: event,
+              decision: 'deny',
+              tool: name,
+              reason: 'design_self_approval'
+            });
+            return deny('Savyre blocked a self-approved design checkpoint.', String(reportGate.reason || ''));
+          }
+        }
+      }
     }
     if (
       writeOk &&
@@ -3877,6 +4081,13 @@ async function handleHook(input) {
       tool: 'afterFileEdit',
       reason: fileFromInput(input) || 'file edit'
     });
+    if (writeOk && manifest.stageId === 's04-build-review' && fileFromInput(input)) {
+      try {
+        await recordS04ObservedWrite(workspace, fileFromInput(input));
+      } catch {
+        /* missing observation only delays promotion */
+      }
+    }
     return {};
   }
 
@@ -4011,16 +4222,66 @@ async function readBacklogWork(workspace, stageId) {
   } catch {
     /* no tasks dir yet */
   }
+
+  // Report prose is a proposal. Promote only with runtime-observed writes + the item's check (S4-F2).
+  const ledger = await readS04ProgressLedger(workspace);
+  const proposed =
+    typeof brain?.proposedAppliedBacklogIds === 'function'
+      ? brain.proposedAppliedBacklogIds({ changeReportMarkdown, taskFolderAppliedIds })
+      : new Set();
+  const promotionBlockers = [];
+  let ledgerChanged = false;
+  if (
+    proposed.size &&
+    typeof brain?.evaluateS04ItemPromotion === 'function' &&
+    typeof brain?.readObservedWrites === 'function' &&
+    typeof brain?.readTestRunReceipts === 'function'
+  ) {
+    const observedWrites = brain.readObservedWrites(workspace);
+    const receipts = brain.readTestRunReceipts(workspace);
+    for (const pid of proposed) {
+      const key = String(pid || '').toUpperCase();
+      if (!key || ledger.applied[key]) continue;
+      const item = findBacklogTask(tasks, key);
+      if (!item) continue;
+      const startedAt =
+        ledger.currentItem && String(ledger.currentItem.id).toUpperCase() === key
+          ? ledger.currentItem.startedAt
+          : ledger.reworkItem && String(ledger.reworkItem.id).toUpperCase() === key
+            ? ledger.reworkItem.startedAt
+            : null;
+      const meta = await readJsonIfPresent(
+        path.join(workspace, 'stages', 's04_build_review', 'tasks', key, 'task_metadata.json')
+      );
+      const result = brain.evaluateS04ItemPromotion({
+        item: {
+          id: key,
+          type: item.type,
+          fileScope: item.fileScope || [],
+          tddApplicability: item.tddApplicability || null
+        },
+        observedWrites,
+        receipts,
+        startedAt,
+        manualException: ledger.manualExceptions?.[key] || null,
+        tddEvidence: meta?.tddEvidence || null
+      });
+      if (result?.ok) {
+        ledger.applied[key] = { promotedAt: new Date().toISOString(), evidence: result.evidence || [] };
+        if (ledger.reworkItem && String(ledger.reworkItem.id).toUpperCase() === key) ledger.reworkItem = null;
+        ledgerChanged = true;
+      } else {
+        promotionBlockers.push({ id: key, reasons: result?.reasons || [] });
+      }
+    }
+  }
+  const runtimeAppliedIds = Object.keys(ledger.applied || {});
   const applied =
     typeof brain?.mergeAppliedBacklogIds === 'function'
-      ? brain.mergeAppliedBacklogIds({
-          statusItems: items,
-          changeReportMarkdown,
-          taskFolderAppliedIds
-        })
-      : new Set(taskFolderAppliedIds.map((x) => String(x || '').toUpperCase()).filter(Boolean));
+      ? brain.mergeAppliedBacklogIds({ statusItems: items, runtimeAppliedIds })
+      : new Set(runtimeAppliedIds.map((x) => String(x || '').toUpperCase()).filter(Boolean));
 
-  // Persist progress so overwriting change_report.md for the next item does not lose applied ids.
+  // Persist runtime progress so overwriting change_report.md for the next item does not lose applied ids.
   if (tasks.length && typeof brain?.buildImplementationStatusProjection === 'function') {
     try {
       const projection = brain.buildImplementationStatusProjection({
@@ -4046,7 +4307,7 @@ async function readBacklogWork(workspace, stageId) {
   }
 
   const statusItems = [...applied].map((appliedId) => ({ id: appliedId, state: 'applied' }));
-  const progressOpts = { changeReportMarkdown, taskFolderAppliedIds };
+  const progressOpts = { runtimeAppliedIds: [...applied] };
   const progress =
     typeof brain.summarizeBacklogProgress === 'function'
       ? brain.summarizeBacklogProgress(tasks, statusItems, progressOpts)
@@ -4056,7 +4317,23 @@ async function readBacklogWork(workspace, stageId) {
   const local = localBacklogProgress(tasks, applied);
   const remainingIds = Array.isArray(progress?.remainingIds) ? progress.remainingIds : local.remainingIds;
   const stuck = Array.isArray(progress?.stuck) ? progress.stuck : local.stuck;
-  return { nextId, remainingIds, stuck };
+
+  // Bind the active item and the time it started so promotion only counts writes/runs after it.
+  const currentKey = ledger.currentItem?.id ? String(ledger.currentItem.id).toUpperCase() : null;
+  const nextKey = nextId ? nextId.toUpperCase() : null;
+  if (nextKey !== currentKey) {
+    ledger.currentItem = nextKey ? { id: nextKey, startedAt: new Date().toISOString() } : null;
+    ledger.reworkItem = null;
+    ledgerChanged = true;
+  }
+  if (ledgerChanged || !existsSync(path.join(workspace, S04_PROGRESS_REL))) {
+    try {
+      await writeS04ProgressLedger(workspace, ledger);
+    } catch {
+      /* ledger write failure keeps items unpromoted */
+    }
+  }
+  return { nextId, remainingIds, stuck, promotionBlockers };
 }
 
 async function readNextBacklogItemId(workspace, stageId) {
@@ -4070,7 +4347,50 @@ function backlogFlags(work) {
   const stuckBacklog = Array.isArray(work?.stuck) ? work.stuck : [];
   const hasRemainingBacklog = remainingBacklogIds.length > 0;
   const backlogBlocked = hasRemainingBacklog && !nextBacklogItemId;
-  return { nextBacklogItemId, remainingBacklogIds, stuckBacklog, hasRemainingBacklog, backlogBlocked };
+  const promotionBlockers = Array.isArray(work?.promotionBlockers) ? work.promotionBlockers : [];
+  return {
+    nextBacklogItemId,
+    remainingBacklogIds,
+    stuckBacklog,
+    hasRemainingBacklog,
+    backlogBlocked,
+    promotionBlockers
+  };
+}
+
+/**
+ * S04: a required-TDD item cannot run RED/GREEN until the test runner exists.
+ * The agent never installs; the developer approves `/savyre-setup-tests` (or the panel command).
+ */
+async function testSetupBlocker(workspace, stageId, itemId) {
+  if (stageId !== 's04-build-review' || !itemId) return null;
+  if (typeof brain?.planTestRunnerSetup !== 'function') return null;
+  const tasks = await readBacklogTasks(workspace);
+  const item = findBacklogTask(tasks, itemId);
+  if (String(item?.tddApplicability || '').toLowerCase() !== 'required') return null;
+  let plan;
+  try {
+    plan = brain.planTestRunnerSetup(workspace);
+  } catch {
+    return null;
+  }
+  if (!plan || plan.ready) return null;
+  const userMessage =
+    typeof brain.testRunnerSetupUserMessage === 'function'
+      ? brain.testRunnerSetupUserMessage(plan, itemId)
+      : `The test runner isn't set up yet. Run \`/savyre-setup-tests\` to install it, then I'll continue with ${itemId}.`;
+  return {
+    plan,
+    userMessage,
+    agentMessage: `TEST RUNNER MISSING for ${itemId} (${(plan.missing || []).join(', ')}). Do NOT install anything and do NOT run npm install / npx playwright install. You may write the failing spec file for ${itemId}, but do not write product source yet. Speak userMessage exactly and wait for the developer to run /savyre-setup-tests; never run it yourself or add "yes".`
+  };
+}
+
+/** Agent-only note: the report claims an item applied, but the runtime has not observed it yet. */
+function promotionBlockerNote(blockers, itemId) {
+  const hit = (blockers || []).find((b) => String(b?.id || '').toUpperCase() === String(itemId || '').toUpperCase());
+  if (!hit || !hit.reasons?.length) return '';
+  return ` ${hit.id} is still NOT applied (report status is only a proposal): ${hit.reasons.join(' ')} Fix that for ${hit.id}, then run turn again. Do not start a later item.`;
 }
 
 function sessionLooksActive(session) {
@@ -5131,6 +5451,7 @@ async function buildInteractiveTurn(workspace, stageId, sessionId, existing) {
     backlogBlocked: backlog.backlogBlocked,
     remainingBacklogIds: backlog.remainingBacklogIds,
     stuckBacklog: backlog.stuckBacklog,
+    promotionBlockers: backlog.promotionBlockers,
     aiReady,
     lockReady
   };
@@ -5165,6 +5486,7 @@ async function cmdTurn() {
     backlogBlocked,
     remainingBacklogIds,
     stuckBacklog,
+    promotionBlockers,
     aiReady,
     lockReady
   } = await buildInteractiveTurn(workspace, stageId, sessionId, existing);
@@ -5202,34 +5524,42 @@ async function cmdTurn() {
       ? loadDesignCheckpoint(workspace)
       : null;
   const designChat = designCp ? designCheckpointChat(designCp) : null;
+  const setupBlock =
+    !next && !designChat && !backlogBlocked && nextBacklogItemId
+      ? await testSetupBlocker(workspace, stageId, nextBacklogItemId)
+      : null;
   const userMessage = next
     ? chatUserMessage('ask_question', { question: next.question, questionId: next.id })
     : designChat
       ? designChat.userMessage
-      : spoken?.userMessage ||
-        chatStartUserMessage({
-          stageId,
-          confirmed,
-          aiReady: lockReady,
-          nextBacklogItemId,
-          remainingBacklogIds,
-          stuckBacklog,
-          challengeComplete: pass.challengeComplete,
-          evidenceReady: pass.evidenceReady,
-          designCheckpoint: designCp
-        });
+      : setupBlock
+        ? setupBlock.userMessage
+        : spoken?.userMessage ||
+          chatStartUserMessage({
+            stageId,
+            confirmed,
+            aiReady: lockReady,
+            nextBacklogItemId,
+            remainingBacklogIds,
+            stuckBacklog,
+            challengeComplete: pass.challengeComplete,
+            evidenceReady: pass.evidenceReady,
+            designCheckpoint: designCp
+          });
   const message = next
     ? `Ask ${next.id} in this chat. Speak userMessage exactly (it tells them to run /savyre-answer). When they answer, run /savyre-answer with their words. Resume this same question if the chat restarts. Keep/Undo on a file edit is not an answer.`
     : designChat
       ? designChat.agentMessage
-      : awaitingConfirm
+      : setupBlock
+        ? setupBlock.agentMessage
+        : awaitingConfirm
         ? TALK_FROM_ASSIGNED_THEN_CONFIRM
         : awaitingLock
           ? `Run verification-before-completion (turn.activeSkill). If the check passes, ${TALK_FROM_ASSIGNED_THEN_LOCK} Do not run lock, validate, or start the next stage yourself. Savyre unlocks if Validate passes.`
           : backlogBlocked
             ? `${formatBacklogBlockedMessage(remainingBacklogIds, stuckBacklog)} Do not lock Build & Review and do not start another backlog item.`
             : nextBacklogItemId
-              ? agentImplementRecipe(nextBacklogItemId)
+              ? `${agentImplementRecipe(nextBacklogItemId)}${promotionBlockerNote(promotionBlockers, nextBacklogItemId)}`
               : gate.ok
                 ? `Run verification-before-completion (turn.activeSkill). If the check passes, ${waitForDeveloperSlash(lockSlash(stageId))} Do not run it, validate, or start the next stage yourself. Savyre unlocks if Validate passes.`
                 : 'Follow turn.activeSkill. Do not lock until that pass is done.';
@@ -5254,6 +5584,15 @@ async function cmdTurn() {
       message,
       userMessage,
       ...(nextBacklogItemId ? { nextBacklogItemId } : {}),
+      ...(setupBlock
+        ? {
+            testSetupRequired: {
+              stack: setupBlock.plan.stack,
+              missing: setupBlock.plan.missing,
+              steps: (setupBlock.plan.steps || []).map((s) => s.label)
+            }
+          }
+        : {}),
       ...(designCp
         ? {
             designCheckpoint: designCp,
@@ -5276,6 +5615,125 @@ async function cmdTurn() {
   );
 }
 
+/**
+ * Record the developer's design decision in the runtime ledger. Accepted only when the
+ * AskQuestion for this item was shown for the preview that is still on disk.
+ */
+async function cmdAnswerDesign(workspace, stageId, backlogId, rest) {
+  const words = rest.join(' ').trim();
+  const choice = (words.split(/\s+/)[0] || '').toLowerCase();
+  const decision = /^(approve|approved|ok|yes|1)$/.test(choice)
+    ? 'approved'
+    : /^(changes|change|changes_requested|revise|no|2)$/.test(choice)
+      ? 'changes_requested'
+      : null;
+  if (stageId !== 's04-build-review' || !decision) {
+    return withUserMessage(
+      {
+        ok: false,
+        action: 'answer',
+        unlocksStage: false,
+        reason: 'Usage on Build & Review: answer DESIGN-<ID> approve | changes <note>'
+      },
+      'Pick Approve or Request changes for the design, then I will record it.'
+    );
+  }
+  if (
+    typeof brain?.recordDesignDecision !== 'function' ||
+    typeof brain?.computeDesignPreviewDigest !== 'function'
+  ) {
+    return withUserMessage(
+      { ok: false, action: 'answer', unlocksStage: false, reason: 'design ledger unavailable' },
+      BRAIN_MISSING_USER_MESSAGE
+    );
+  }
+  const note = words.split(/\s+/).slice(1).join(' ').trim() || null;
+  const ledger = await readDesignLedger(workspace);
+  const recorded = brain.recordDesignDecision(ledger, {
+    backlogId,
+    decision,
+    currentPreviewDigest: brain.computeDesignPreviewDigest(workspace, backlogId),
+    at: new Date().toISOString(),
+    note
+  });
+  if (!recorded?.ok) {
+    return withUserMessage(
+      { ok: false, action: 'answer', unlocksStage: false, reason: recorded?.error || 'design decision rejected' },
+      String(recorded?.error || 'Show the current design with the question first.')
+    );
+  }
+  await writeDesignLedger(workspace, recorded.ledger);
+  const reportAbs = path.join(workspace, 'stages', 's04_build_review', 'tasks', backlogId, 'ui_ux_report.json');
+  const report = await readJsonIfPresent(reportAbs);
+  if (report && report.artifactType === 'ui_ux_report') {
+    const projected =
+      decision === 'approved'
+        ? typeof brain.markUiUxDesignApproved === 'function'
+          ? brain.markUiUxDesignApproved(report, note)
+          : { ...report, mockup: { ...report.mockup, designCheckpoint: 'approved' } }
+        : typeof brain.markUiUxDesignChangesRequested === 'function'
+          ? brain.markUiUxDesignChangesRequested(report, note)
+          : { ...report, mockup: { ...report.mockup, designCheckpoint: 'changes_requested' } };
+    await fs.writeFile(reportAbs, `${JSON.stringify(projected, null, 2)}\n`, 'utf8');
+  }
+  return withUserMessage(
+    { ok: true, action: 'answer', designDecision: decision, backlogId, unlocksStage: false },
+    decision === 'approved'
+      ? `Design for ${backlogId} is approved. I will build it from that preview next.`
+      : `Got it — I will revise the ${backlogId} design and show it again.`
+  );
+}
+
+/** Dependency rework: widen the authorized file scope to a dependency of the active item. */
+async function cmdSwitchItem(rawId) {
+  const workspace = await findWorkspaceFromHook({ cwd: process.cwd() });
+  const match = await requireChatPanelMatch(workspace, 'action');
+  if (!match.ok) return match;
+  const id = String(rawId || '').trim().toUpperCase();
+  if (match.panelStageId !== 's04-build-review' || !/^(FS|NFR|TT|TEST|TS|TASK)-\d+$/.test(id)) {
+    return withUserMessage(
+      { ok: false, action: 'switch-item', unlocksStage: false, reason: 'Usage on Build & Review: action switch-item <ID>' },
+      chatUserMessage('unavailable')
+    );
+  }
+  const tasks = await readBacklogTasks(workspace);
+  const ledger = await readS04ProgressLedger(workspace);
+  const activeId = ledger.currentItem?.id || (await readBacklogWork(workspace, 's04-build-review')).nextId;
+  const depsOf = (tid) =>
+    (findBacklogTask(tasks, tid)?.dependencies || []).map((d) => {
+      const raw = String(d || '').trim();
+      return (raw.includes('#') ? raw.slice(raw.lastIndexOf('#') + 1) : raw).toUpperCase();
+    });
+  const closure = new Set();
+  const stack = activeId ? [String(activeId).toUpperCase()] : [];
+  while (stack.length) {
+    for (const dep of depsOf(stack.pop())) {
+      if (!closure.has(dep)) {
+        closure.add(dep);
+        stack.push(dep);
+      }
+    }
+  }
+  if (!closure.has(id)) {
+    return withUserMessage(
+      {
+        ok: false,
+        action: 'switch-item',
+        unlocksStage: false,
+        reason: `${id} is not a dependency of the active item ${activeId || '(none)'}.`
+      },
+      chatUserMessage('unavailable')
+    );
+  }
+  ledger.reworkItem = { id, startedAt: new Date().toISOString(), forItem: String(activeId).toUpperCase() };
+  if (ledger.applied[id]) delete ledger.applied[id];
+  await writeS04ProgressLedger(workspace, ledger);
+  return withUserMessage(
+    { ok: true, action: 'switch-item', reworkItem: id, forItem: activeId, unlocksStage: false },
+    `Switching to ${id} first, because ${activeId} depends on it.`
+  );
+}
+
 async function cmdAnswer(questionIdOrAnswer, ...rest) {
   const workspace = await findWorkspaceFromHook({ cwd: process.cwd() });
   const match = await requireChatPanelMatch(workspace, 'answer');
@@ -5283,6 +5741,10 @@ async function cmdAnswer(questionIdOrAnswer, ...rest) {
   const session = await readJsonIfPresent(path.join(workspace, '.savyre', 'session.json'));
   const stageId = match.panelStageId;
   const first = String(questionIdOrAnswer || '').trim();
+  const designMatch = first.match(/^DESIGN-((?:FS|NFR|TT|TEST|TS|TASK)-\d+)$/i);
+  if (designMatch) {
+    return cmdAnswerDesign(workspace, stageId, designMatch[1].toUpperCase(), rest);
+  }
   let questionId = null;
   let answer = '';
   if (/^OQ-\d+$/i.test(first)) {
@@ -5881,6 +6343,9 @@ async function cmdAction(actionName, ...rest) {
   if (action === 'next') {
     return cmdNext();
   }
+  if (action === 'switch-item' || action === 'switch_item') {
+    return cmdSwitchItem(rest[0]);
+  }
   return withUserMessage(
     { ok: false, action, unlocksStage: false, reason: `Unknown action ${action}` },
     chatUserMessage('unavailable')
@@ -5955,6 +6420,73 @@ async function cmdReset(verb, confirmWord) {
   );
 }
 
+/**
+ * Developer-approved test-runner setup. Without `yes`, show the fixed plan and wait.
+ * With `yes`, run only the hard-coded commands from planTestRunnerSetup and record a receipt.
+ */
+async function cmdSetupTests(confirmWord) {
+  const workspace = await findWorkspaceFromHook({ cwd: process.cwd() });
+  if (typeof brain?.planTestRunnerSetup !== 'function' || typeof brain?.runTestRunnerSetup !== 'function') {
+    return withUserMessage({ ok: false, action: 'setup-tests', unlocksStage: false }, BRAIN_MISSING_USER_MESSAGE);
+  }
+  const plan = brain.planTestRunnerSetup(workspace);
+  if (plan.ready) {
+    return withUserMessage(
+      { ok: true, action: 'setup-tests', ready: true, stack: plan.stack, unlocksStage: false },
+      'The test runner is already set up. Run `/savyre-turn` to continue.'
+    );
+  }
+  if (!plan.steps.length) {
+    return withUserMessage(
+      { ok: false, action: 'setup-tests', stack: plan.stack, unlocksStage: false, reason: plan.reason },
+      plan.reason
+    );
+  }
+  const confirmed = String(confirmWord || '').trim().toLowerCase() === 'yes';
+  if (!confirmed) {
+    const list = plan.steps.map((s) => `\`${s.command}\``).join(' then ');
+    return withUserMessage(
+      {
+        ok: false,
+        action: 'setup-tests',
+        confirmed: false,
+        stack: plan.stack,
+        missing: plan.missing,
+        steps: plan.steps,
+        unlocksStage: false
+      },
+      `This will run ${list} in this project (downloads from the internet). Run \`/savyre-setup-tests yes\` to confirm.`
+    );
+  }
+  const { receipt, after } = brain.runTestRunnerSetup(workspace, { approvedVia: 'chat-lifecycle' });
+  await appendEvidence(workspace, {
+    executionId: null,
+    hook: 'cli',
+    decision: receipt.ok ? 'record' : 'note',
+    reason: `setup-tests:${receipt.ok ? 'ok' : 'failed'}:${receipt.steps.map((s) => `${s.id}=${s.exitCode}`).join(',')}`
+  });
+  if (!receipt.ok) {
+    const failed = receipt.steps.find((s) => !s.ok);
+    return withUserMessage(
+      {
+        ok: false,
+        action: 'setup-tests',
+        stack: plan.stack,
+        steps: receipt.steps,
+        stillMissing: after.missing,
+        unlocksStage: false
+      },
+      failed
+        ? `Setup failed at \`${failed.command}\` (exit ${failed.exitCode}). Check your network or npm access, then run \`/savyre-setup-tests yes\` again.`
+        : `Setup finished but ${after.missing.join(' and ')} is still missing. Run \`/savyre-setup-tests yes\` again.`
+    );
+  }
+  return withUserMessage(
+    { ok: true, action: 'setup-tests', stack: plan.stack, steps: receipt.steps, unlocksStage: false },
+    'The test runner is installed. Run `/savyre-turn` and I will continue with the next backlog item.'
+  );
+}
+
 async function cmdStop() {
   const workspace = await findWorkspaceFromHook({ cwd: process.cwd() });
   const { manifest } = await loadActive(workspace);
@@ -5988,6 +6520,10 @@ async function main() {
   }
   if (verb === 'reset-stage' || verb === 'reset-workflow') {
     reply(await cmdReset(verb, process.argv[3]));
+    return;
+  }
+  if (verb === 'setup-tests') {
+    reply(await cmdSetupTests(process.argv[3]));
     return;
   }
   if (

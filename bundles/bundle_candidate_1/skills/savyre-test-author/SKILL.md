@@ -24,11 +24,13 @@ Choose the Playwright flavor in this order:
 1. Detected Playwright stack already in the repo (script, config, or specs).
 2. Else if the project is Python-first (`pytest` / `pyproject.toml` without Playwright JS), use **Playwright Python** (`pytest` + Playwright).
 3. Else if Maven/Gradle Playwright Java or .NET Playwright is configured, use that flavor.
-4. Else use **Playwright JS/TS**: scaffold `@playwright/test` if missing, write `tests/<item>.spec.ts` (or `e2e/`), run `npx playwright test`.
+4. Else use **Playwright JS/TS**: write `tests/<item>.spec.ts` (or `e2e/`) and run `npx playwright test`.
+
+**Missing runner or browsers is a blocked setup item, not RED and not permission to install.** S04 shell allows only the installed runner's test subcommand (no `npm install`, `npx playwright install`, `codegen`, redirection, or output-writing flags). If `@playwright/test` or its browsers are absent, write the spec, record the item as blocked on setup under Deviations and Blockers, and ask the developer to run `/savyre-setup-tests` (or Command Palette → **Savyre: Install Test Runner**). The runtime then runs fixed install commands after their approval. Never run that command or add `yes` yourself.
 
 Node and plain Python unit files may still exist for non-AC helpers, but AC titles must be covered by Playwright checks unless the human records an exemption.
 
-Browser/runtime install (`npx playwright install`) is setup, not a valid RED. RED must be an assertion or locator failure for the intended behavior. The test title includes the AC id.
+The runtime records every test run as a receipt with executed assertion counts. A syntax/import/setup error or a zero-test run is not RED, and exit code 0 with no executed assertion is not GREEN. RED must be an executed assertion or locator failure for the intended behavior; GREEN must be the same item's assertions passing after the source changed. The test title includes the AC id.
 
 ## Playwright MCP
 When Playwright MCP tools are connected (`@playwright/mcp`), open the page and snapshot it before writing the spec. Clicks and snapshots are not RED/GREEN. Still write a committed `*.spec.ts` / `*.spec.js` and run `npx playwright test` (or the language command) for the S04 task record. If those tools are not connected, write the spec anyway.

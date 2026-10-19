@@ -205,6 +205,14 @@ test('S4-F3: design approval binds to the runtime-issued question and the curren
   fs.rmSync(ledgerPath, { force: true });
 });
 
+test('greenfield: scaffold item may write package.json while no manifest exists', () => {
+  // The fixture repo has no package.json; FS-001 is required-TDD with fileScope src/upload/ only.
+  assert.equal(fs.existsSync(path.join(ws, 'package.json')), false);
+  assert.equal(denied(writeTo('package.json', '{"name":"app"}')), false);
+  assert.equal(denied(writeTo('playwright.config.js', 'module.exports = {};')), false);
+  assert.equal(denied(writeTo('src/stock/delta.js')), true);
+});
+
 test('S4-F2: report "Status: applied" alone does not release FS-002', () => {
   write(
     'stages/s04_build_review/change_report.md',

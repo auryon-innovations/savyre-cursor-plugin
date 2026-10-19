@@ -3266,9 +3266,14 @@ const CHAT_ARTIFACT_HEADINGS = {
 # Findings
 # Deviations and Blockers
 ## Open Questions`,
-  's05-test-resolve': `# Verification Report
-# Results
-# Remaining Issues
+  's05-test-resolve': `# Observed Test Assets
+# Approved/Proposed Strategy
+# Criterion-to-Check Matrix
+# Actual Run Ledger
+# Failures and Diagnosis
+# Authorized Correction References
+# Rerun Evidence
+# Missing/Stale/Manual Checks
 ## Open Questions`,
   's06-delivery-readiness': `# Delivery Readiness
 # Checklist
@@ -3286,10 +3291,14 @@ function chatWriteAiOutputMessage(stageId) {
     isTaskCaptureStage(stageId)
       ? 'Fill every section from the confirmed Assigned task only. Restate their product; do not copy process text.'
       : 'Fill from the previous stage final.md. Do not copy prompt instructions.';
+  const completeness =
+    stageId === 's05-test-resolve'
+      ? 'Use these headings. Document each required criterion, its actual Savyre-recorded run or explicit unavailable evidence, current bindings, unresolved failures and the next authorized action. Missing evidence stays unverified; put diagnosis under Failures and Diagnosis (no separate diagnosis file). Include ## Open Questions:'
+      : 'Use these headings (a complete stage document, at least 200 characters, include ## Open Questions):';
   return [
     `Write \`${draftRel}\` now so Generate final will not fail.`,
     src,
-    'Use these headings (a complete stage document, at least 200 characters, include ## Open Questions):',
+    completeness,
     headings,
     'If there is no product-scope ambiguity, write `No open questions identified.` under ## Open Questions.',
     `Then run savyre-guard.mjs turn. If no pending question, ${waitForDeveloperSlash(lockSlash(stageId))} Do not run generate-final, validate, or the next stage yourself.`,
@@ -3325,6 +3334,7 @@ async function chatStageFollowupMessage(workspace, stageId, next) {
     }
     if (nextBacklogItemId) {
       const setup = await testSetupBlocker(workspace, stageId, nextBacklogItemId);
+      if (setup?.scaffoldFirst) return `${agentImplementRecipe(nextBacklogItemId)} ${setup.agentNote}`;
       if (setup) return setup.agentMessage;
       return agentImplementRecipe(nextBacklogItemId);
     }
@@ -3759,7 +3769,9 @@ async function handleHook(input) {
       `${stageTitle(manifest.stageId)} does not allow terminal commands.`,
       buildReview
         ? 'You may run the installed test command for this backlog item (`npm test`, `node --test`, `npx playwright test`, `pytest`, …) without redirection, pipes, output-file or snapshot-update flags. You may also run the project start script (`npm start`, `npm run dev`, `npm run start`) and one request to localhost or 127.0.0.1 when the done check needs a running process. Only an executed failing assertion is recorded as RED and executed passing assertions as GREEN; setup errors and zero-test runs are not. Do not install packages or browsers (`npx playwright install`), deploy, or change git — a missing runner is a blocked setup item. Use /savyre-stop to leave enforced mode. You cannot approve the stage.'
-        : 'Do not run terminal commands. Use /savyre-stop to leave enforced mode. You cannot approve the stage.'
+        : manifest.stageId === 's05-test-resolve'
+          ? 'Test & Resolve cannot run commands itself. Savyre runs the checks with fixed commands after the developer runs /savyre-next, and records each result. Keep unrun criteria unverified. You cannot approve the stage.'
+          : 'Do not run terminal commands. Use /savyre-stop to leave enforced mode. You cannot approve the stage.'
     );
   }
 
@@ -3890,16 +3902,26 @@ async function handleHook(input) {
             'Reload the Savyre extension so the runtime is available, then retry.'
           );
         }
-        let scope = { activeItem: null, reworkItem: null };
+        let scope = { activeItem: null, reworkItem: null, tasks: [] };
         try {
           scope = await activeS04Scope(workspace);
         } catch {
           /* no backlog yet: no item scope */
         }
+        let scaffoldFirst = false;
+        if (scope.activeItem && typeof brain.testSetupDecisionForItem === 'function') {
+          try {
+            const full = findBacklogTask(scope.tasks, scope.activeItem.id);
+            scaffoldFirst = brain.testSetupDecisionForItem(workspace, full)?.kind === 'scaffold_first';
+          } catch {
+            scaffoldFirst = false;
+          }
+        }
         const decision = brain.evaluateS04AgentWrite({
           relPath: rel,
           activeItem: scope.activeItem,
-          reworkItem: scope.reworkItem
+          reworkItem: scope.reworkItem,
+          scaffoldFirst
         });
         if (!decision?.ok) {
           await appendEvidence(workspace, {
@@ -4404,7 +4426,24 @@ async function testSetupBlocker(workspace, stageId, itemId) {
   if (String(item?.tddApplicability || '').toLowerCase() !== 'required') return null;
   let plan;
   try {
-    plan = brain.planTestRunnerSetup(workspace, { fileScope: item?.fileScope || [] });
+    if (typeof brain.testSetupDecisionForItem === 'function') {
+      const decision = brain.testSetupDecisionForItem(workspace, item);
+      if (decision.kind === 'ready') return null;
+      // Greenfield: nothing can be installed until the item writes the manifest — scaffold first.
+      if (decision.kind === 'scaffold_first') {
+        return {
+          plan: decision.plan,
+          scaffoldFirst: true,
+          agentNote:
+            typeof brain.scaffoldFirstAgentNote === 'function'
+              ? brain.scaffoldFirstAgentNote(itemId, decision.manifestInScope)
+              : `SCAFFOLD FIRST for ${itemId}: write only package.json and tooling, then run turn.`
+        };
+      }
+      plan = decision.plan;
+    } else {
+      plan = brain.planTestRunnerSetup(workspace, { fileScope: item?.fileScope || [] });
+    }
   } catch {
     return null;
   }
@@ -4417,6 +4456,30 @@ async function testSetupBlocker(workspace, stageId, itemId) {
     plan,
     userMessage,
     agentMessage: `TEST RUNNER MISSING for ${itemId} (${(plan.missing || []).join(', ')}). Do NOT install anything and do NOT run npm install / npx playwright install. You may write the failing spec file for ${itemId}, but do not write product source yet. Speak userMessage exactly and wait for the developer to run /savyre-next (it runs the fixed install); never run /savyre-next or /savyre-setup-tests yourself.`
+  };
+}
+
+/**
+ * S05: candidate checks that have no current runtime result. The agent cannot run them
+ * (S05 has no Shell); `/savyre-next` runs the fixed commands and records receipts.
+ */
+function s05PendingRunBlock(workspace, stageId) {
+  if (stageId !== 's05-test-resolve' || typeof brain?.planS05CheckRuns !== 'function') return null;
+  let plan;
+  try {
+    plan = brain.planS05CheckRuns(workspace);
+  } catch {
+    return null;
+  }
+  if (!plan?.runs?.length) return null;
+  const userMessage =
+    typeof brain.s05RunUserMessage === 'function'
+      ? brain.s05RunUserMessage(plan)
+      : `${plan.runs.length} checks have no current result. Run \`/savyre-next\` to run them.`;
+  return {
+    plan,
+    userMessage,
+    agentMessage: `S05 CHECKS NEED A RUN (${plan.runs.map((r) => r.testPath).join(', ')}). You cannot run tests in Test & Resolve. Do NOT mark them passed. Speak userMessage exactly and wait for the developer to run /savyre-next; never run it yourself. Keep those criteria unverified in the report until Savyre records a run.`
   };
 }
 
@@ -5560,17 +5623,24 @@ async function cmdTurn() {
       : null;
   const designChat = designCp ? designCheckpointChat(designCp) : null;
   if (designChat && stageId === 's04-build-review') await recordIssuedDesignQuestion(workspace);
-  const setupBlock =
+  const setupCheck =
     !next && !designChat && !backlogBlocked && nextBacklogItemId
       ? await testSetupBlocker(workspace, stageId, nextBacklogItemId)
       : null;
+  // Greenfield scaffold-first is not a block: the item proceeds with an extra agent note.
+  const setupBlock = setupCheck && !setupCheck.scaffoldFirst ? setupCheck : null;
+  const scaffoldNote = setupCheck?.scaffoldFirst ? ` ${setupCheck.agentNote}` : '';
+  // S05: checks with no current result are run by the runtime after the developer's /savyre-next.
+  const s05Run = !next ? s05PendingRunBlock(workspace, stageId) : null;
   const userMessage = next
     ? chatUserMessage('ask_question', { question: next.question, questionId: next.id })
     : designChat
       ? designChat.userMessage
       : setupBlock
         ? setupBlock.userMessage
-        : spoken?.userMessage ||
+        : s05Run
+          ? s05Run.userMessage
+          : spoken?.userMessage ||
           chatStartUserMessage({
             stageId,
             confirmed,
@@ -5588,14 +5658,16 @@ async function cmdTurn() {
       ? designChat.agentMessage
       : setupBlock
         ? setupBlock.agentMessage
-        : awaitingConfirm
+        : s05Run
+          ? s05Run.agentMessage
+          : awaitingConfirm
         ? TALK_FROM_ASSIGNED_THEN_CONFIRM
         : awaitingLock
           ? `Run verification-before-completion (turn.activeSkill). If the check passes, ${TALK_FROM_ASSIGNED_THEN_LOCK} Do not run lock, validate, or start the next stage yourself. Savyre unlocks if Validate passes.`
           : backlogBlocked
             ? `${formatBacklogBlockedMessage(remainingBacklogIds, stuckBacklog)} Do not lock Build & Review and do not start another backlog item.`
             : nextBacklogItemId
-              ? `${agentImplementRecipe(nextBacklogItemId)}${promotionBlockerNote(promotionBlockers, nextBacklogItemId)}`
+              ? `${agentImplementRecipe(nextBacklogItemId)}${promotionBlockerNote(promotionBlockers, nextBacklogItemId)}${scaffoldNote}`
               : gate.ok
                 ? `Run verification-before-completion (turn.activeSkill). If the check passes, ${waitForDeveloperSlash(lockSlash(stageId))} Do not run it, validate, or start the next stage yourself. Savyre unlocks if Validate passes.`
                 : 'Follow turn.activeSkill. Do not lock until that pass is done.';
@@ -6333,7 +6405,7 @@ async function cmdNext() {
       const setup = designPending
         ? null
         : await testSetupBlocker(workspace, panelStageId, backlog.nextBacklogItemId);
-      if (setup) {
+      if (setup && !setup.scaffoldFirst) {
         const installed = await cmdSetupTests('yes');
         if (installed?.ok !== true) return installed;
         const turned = await cmdTurn();
@@ -6359,6 +6431,36 @@ async function cmdNext() {
         },
         formatBacklogBlockedMessage(backlog.remainingBacklogIds, backlog.stuckBacklog)
       );
+    }
+  }
+  // S05: developer-typed /savyre-next approves running the pending checks (fixed commands).
+  if (panelStageId === 's05-test-resolve' && typeof brain?.runS05Checks === 'function') {
+    const pending = s05PendingRunBlock(workspace, panelStageId);
+    if (pending) {
+      let out;
+      try {
+        out = brain.runS05Checks(workspace, { approvedVia: 'chat-next' });
+      } catch (e) {
+        return withUserMessage(
+          { ok: false, action: 'next', unlocksStage: false, reason: String(e?.message || e) },
+          'Savyre could not run the checks. Check the project test setup, then run `/savyre-next` again.'
+        );
+      }
+      await appendEvidence(workspace, {
+        executionId: null,
+        hook: 'cli',
+        decision: 'record',
+        reason: `s05-run-checks:${(out.ran || []).map((r) => `${r.testPath}=${r.kind}`).join(',')}`
+      });
+      const passed = (out.ran || []).filter((r) => r.kind === 'green').length;
+      const failed = (out.ran || []).filter((r) => (r.failed ?? 0) > 0).length;
+      const other = (out.ran || []).length - passed - failed;
+      const turned = await cmdTurn();
+      return {
+        ...turned,
+        s05Run: { ran: (out.ran || []).length, passed, failed, other },
+        userMessage: `Ran ${(out.ran || []).length} check${(out.ran || []).length === 1 ? '' : 's'}: ${passed} passed, ${failed} failed${other ? `, ${other} could not run` : ''}. ${turned?.userMessage || ''}`.trim()
+      };
     }
   }
   const lastGf = await readLastGenerateFinalStageId(workspace);

@@ -39,9 +39,9 @@ When this stage writes a fenced mermaid diagram, the markdown preview must be ab
 
 ## Procedure
 
-1. Inventory observed tests/helpers/commands and setup/scan limitations. Test existence is not pass/coverage; do not prescribe a new framework.
+1. Inventory observed tests/helpers/commands and setup/scan limitations. Test existence is not pass/coverage. Do not replace an existing suitable suite; for genuine gaps, propose the configured default (Playwright) for approval — missing Playwright setup is authorized S04 work.
 2. Plan reuse/update/new/manual cases with criterion refs, setup/input/expected assertion/priority and gaps. Request strategy approval unless an explicit existing delegation covers the exact strategy; no repeated consent for already-authorized reruns.
-3. New/updated tests are proposals routed to an authorized S04 task; do not create test files from strategy/diagnosis. Execute project-defined commands only through permitted runtime action, working scope/limits and available tool; otherwise consume existing evidence or report not-run.
+3. New/updated tests are proposals routed to an authorized S04 task; do not create test files from strategy/diagnosis. **S05 has no Shell.** Savyre runs each candidate check with a fixed command after the developer runs `/savyre-next`, and records one receipt per check in `.savyre/s05-test-runs.jsonl`; `test_plan.json` statuses come only from those receipts (and S04 build runs). Speak the runtime `userMessage` that lists the commands; never run `/savyre-next` yourself and never mark an unrun check passed. A criterion with no runnable check can only be manual/waived via Command Palette → **Savyre: Record Manual Check**.
 4. Analyze actual run results with source/config/time/command/exit/assertion/criteria bindings. Distinguish unavailable/manual/stale/failure; no exit0-without-assertions acceptance.
 5. Diagnose real failure with supporting/falsifying evidence and bounded hypotheses; keep probable versus confirmed cause. Propose smallest scope correction and rerun targets. Route authorized correction to S04, refresh affected reviews/runs; do not delete tests for a pass.
 
@@ -51,7 +51,7 @@ Every **critical AC** needs **runnable** evidence (unit/API and/or e2e). Do not 
 ## Output contract
 Produce a concise response with outcome, material question/blocker if any and the verified next action. Detailed content belongs in the assigned draft `verification_report.md` or returned preview content when no writer is delegated.
 
-Draft sections: **Observed Test Assets; Approved/Proposed Strategy; Criterion-to-Check Matrix; Actual Run Ledger; Failures and Diagnosis; Authorized Correction References; Rerun Evidence; Missing/Stale/Manual Checks**. Omit irrelevant optional detail rather than fill generic sections with invented facts. Structured supporting artifacts: **test_inventory.json; test_plan.json; diagnosis_report.md (conditional); correction_log.json (conditional)**.
+Draft sections: **Observed Test Assets; Approved/Proposed Strategy; Criterion-to-Check Matrix; Actual Run Ledger; Failures and Diagnosis; Authorized Correction References; Rerun Evidence; Missing/Stale/Manual Checks**. Omit irrelevant optional detail rather than fill generic sections with invented facts. Structured supporting artifacts (runtime-written; the agent writes only `verification_report.md`): **test_plan.json** (criterion matrix with per-check run evidence, rebuilt every turn); diagnosis goes under **Failures and Diagnosis** in the report (`diagnosis_report.md` is runtime-only); `test_inventory.json` and `correction_log.json` are deferred projections.
 
 Required supporting content: Observed real assets/commands; cases stable IDs/action/criteria/setup/assertion/approval; diagnosis hypotheses/evidence; correction proposal/action/source/rerun refs. Runtime evidence/runs/<run_id> holds canonical run_metadata.json/execution.log; stages reference it rather than duplicate passes.
 

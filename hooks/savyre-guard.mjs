@@ -2733,9 +2733,11 @@ async function ensureLockReadyReview(workspace, stageId, opts = {}) {
   if (pending.length && !opts.force) return false;
   const review = await readStageReview(workspace, stageId);
   if (typeof brain?.buildLockReadyDeveloperReview !== 'function') return false;
+  // Only reached from generate-final, i.e. the developer's own /savyre-next lock.
   const next = brain.buildLockReadyDeveloperReview({
     draftText: draftText || '',
-    reviewText: review.text
+    reviewText: review.text,
+    acceptedVia: 'chat:/savyre-next'
   });
   if (!String(next || '').trim()) return false;
   if (
@@ -3275,9 +3277,14 @@ const CHAT_ARTIFACT_HEADINGS = {
 # Rerun Evidence
 # Missing/Stale/Manual Checks
 ## Open Questions`,
-  's06-delivery-readiness': `# Delivery Readiness
-# Checklist
-# Risks
+  's06-delivery-readiness': `# Criterion Evidence Matrix
+# Security and Regression Scope
+# Missing Assurance
+# Review/Deviation Status
+# Residual Risks and Owners
+# Blockers
+# Readiness Recommendation
+# Acceptance Needed
 ## Open Questions`,
   's07-handoff': `# Delivery Summary
 # Handoff Notes
@@ -3294,7 +3301,9 @@ function chatWriteAiOutputMessage(stageId) {
   const completeness =
     stageId === 's05-test-resolve'
       ? 'Use these headings. Document each required criterion, its actual Savyre-recorded run or explicit unavailable evidence, current bindings, unresolved failures and the next authorized action. Missing evidence stays unverified; put diagnosis under Failures and Diagnosis (no separate diagnosis file). Include ## Open Questions:'
-      : 'Use these headings (a complete stage document, at least 200 characters, include ## Open Questions):';
+      : stageId === 's06-delivery-readiness'
+        ? 'Use these headings. Map every criterion to its current Savyre-recorded result, keep security and regression analysis in this report, name each open major review finding by id under Blockers or Residual Risks, list missing assurance explicitly, and state what acceptance the developer still needs to give. Savyre derives acceptance_checklist.json on Validate and blocks on missing sections or evidence. Include ## Open Questions:'
+        : 'Use these headings (a complete stage document, at least 200 characters, include ## Open Questions):';
   return [
     `Write \`${draftRel}\` now so Generate final will not fail.`,
     src,
@@ -4464,7 +4473,9 @@ async function testSetupBlocker(workspace, stageId, itemId) {
  * (S05 has no Shell); `/savyre-next` runs the fixed commands and records receipts.
  */
 function s05PendingRunBlock(workspace, stageId) {
-  if (stageId !== 's05-test-resolve' || typeof brain?.planS05CheckRuns !== 'function') return null;
+  // S06 consumes the same criterion evidence; stale/unverified checks are re-run the same way.
+  if (stageId !== 's05-test-resolve' && stageId !== 's06-delivery-readiness') return null;
+  if (typeof brain?.planS05CheckRuns !== 'function') return null;
   let plan;
   try {
     plan = brain.planS05CheckRuns(workspace);
@@ -4479,7 +4490,7 @@ function s05PendingRunBlock(workspace, stageId) {
   return {
     plan,
     userMessage,
-    agentMessage: `S05 CHECKS NEED A RUN (${plan.runs.map((r) => r.testPath).join(', ')}). You cannot run tests in Test & Resolve. Do NOT mark them passed. Speak userMessage exactly and wait for the developer to run /savyre-next; never run it yourself. Keep those criteria unverified in the report until Savyre records a run.`
+    agentMessage: `CRITERION CHECKS NEED A RUN (${plan.runs.map((r) => r.testPath).join(', ')}). You cannot run tests in this stage. Do NOT mark them passed. Speak userMessage exactly and wait for the developer to run /savyre-next; never run it yourself. Keep those criteria unverified in the report until Savyre records a run.`
   };
 }
 
@@ -5079,8 +5090,9 @@ async function readOrCreateCheckpoint(workspace, stageId, sessionId) {
   const file = path.join(workspace, CHAT_CHECKPOINT_REL);
   let existing = await readJsonIfPresent(file);
   if (!existing || existing.stageId !== stageId) {
-    const lastGf = existing?.lastGenerateFinalStageId;
-    const lastGfAt = existing?.lastGenerateFinalAt;
+    // A lock record belongs to the binding it was made in; entering (or reopening) a stage must lock it again.
+    const lastGf = null;
+    const lastGfAt = null;
     const prev = existing;
     const transition =
       typeof brain?.checkpointPatchForStageTransition === 'function'
@@ -5133,7 +5145,9 @@ async function writeCheckpoint(workspace, checkpoint) {
     isTaskCaptureStage(checkpoint.stageId) &&
     prev.developerConfirmed === true;
   const developerConfirmed = checkpoint.developerConfirmed === true || keepConfirmed;
-  const lastGf = checkpoint.lastGenerateFinalStageId || prev?.lastGenerateFinalStageId;
+  const lastGf =
+    checkpoint.lastGenerateFinalStageId ||
+    (prev?.stageId === checkpoint.stageId ? prev?.lastGenerateFinalStageId : null);
   const next = {
     ...checkpoint,
     developerConfirmed,
@@ -5837,20 +5851,33 @@ async function cmdSwitchItem(rawId) {
       }
     }
   }
-  if (!closure.has(id)) {
+  const finishedRework = !activeId && Boolean(findBacklogTask(tasks, id)) && Boolean(ledger.applied?.[id]);
+  if (!closure.has(id) && !finishedRework) {
     return withUserMessage(
       {
         ok: false,
         action: 'switch-item',
         unlocksStage: false,
-        reason: `${id} is not a dependency of the active item ${activeId || '(none)'}.`
+        reason: activeId
+          ? `${id} is not a dependency of the active item ${activeId}.`
+          : `${id} is not a finished backlog item, so it cannot be reopened for rework.`
       },
       chatUserMessage('unavailable')
     );
   }
-  ledger.reworkItem = { id, startedAt: new Date().toISOString(), forItem: String(activeId).toUpperCase() };
+  ledger.reworkItem = {
+    id,
+    startedAt: new Date().toISOString(),
+    forItem: activeId ? String(activeId).toUpperCase() : null
+  };
   if (ledger.applied[id]) delete ledger.applied[id];
   await writeS04ProgressLedger(workspace, ledger);
+  if (finishedRework) {
+    return withUserMessage(
+      { ok: true, action: 'switch-item', reworkItem: id, forItem: null, unlocksStage: false },
+      `Reopened ${id} for rework. It needs a failing test, the fix, and a passing run again before it counts as done.`
+    );
+  }
   return withUserMessage(
     { ok: true, action: 'switch-item', reworkItem: id, forItem: activeId, unlocksStage: false },
     `Switching to ${id} first, because ${activeId} depends on it.`
@@ -6335,7 +6362,6 @@ async function cmdGenerateFinal() {
   }
   const gfStage = result.data?.stageId || match.panelStageId;
   if (result.ok && gfStage) {
-    await writeLastGenerateFinalStageId(workspace, gfStage);
     if (typeof brain.ensureRequiredLockProjections === 'function') {
       const checkpoint = await readJsonIfPresent(path.join(workspace, CHAT_CHECKPOINT_REL));
       const confirmationRef =
@@ -6344,8 +6370,29 @@ async function cmdGenerateFinal() {
           : checkpoint?.developerConfirmed
             ? 'developer-confirm'
             : `lock:${gfStage}`;
-      await brain.ensureRequiredLockProjections(workspace, gfStage, { confirmationRef });
+      try {
+        await brain.ensureRequiredLockProjections(workspace, gfStage, { confirmationRef });
+      } catch (e) {
+        const detail = String(e?.message || e).split('\n')[0];
+        await appendEvidence(workspace, {
+          executionId: null,
+          hook: 'cli',
+          decision: 'deny',
+          reason: `lock-projections-failed:${gfStage}:${detail}`
+        });
+        return withUserMessage(
+          {
+            ok: false,
+            action: 'generate_final',
+            unlocksStage: false,
+            stageId: gfStage,
+            reason: `Lock records could not be written: ${detail}. Do not validate. Speak userMessage.`
+          },
+          `Savyre could not finish locking this stage: ${detail}. Nothing was validated. Fix the cause, then run \`/savyre-next\` again.`
+        );
+      }
     }
+    await writeLastGenerateFinalStageId(workspace, gfStage);
   }
   return result;
 }
@@ -6434,7 +6481,10 @@ async function cmdNext() {
     }
   }
   // S05: developer-typed /savyre-next approves running the pending checks (fixed commands).
-  if (panelStageId === 's05-test-resolve' && typeof brain?.runS05Checks === 'function') {
+  if (
+    (panelStageId === 's05-test-resolve' || panelStageId === 's06-delivery-readiness') &&
+    typeof brain?.runS05Checks === 'function'
+  ) {
     const pending = s05PendingRunBlock(workspace, panelStageId);
     if (pending) {
       let out;
@@ -6456,10 +6506,11 @@ async function cmdNext() {
       const failed = (out.ran || []).filter((r) => (r.failed ?? 0) > 0).length;
       const other = (out.ran || []).length - passed - failed;
       const turned = await cmdTurn();
+      const hints = Array.isArray(out.hints) ? out.hints.join(' ') : '';
       return {
         ...turned,
         s05Run: { ran: (out.ran || []).length, passed, failed, other },
-        userMessage: `Ran ${(out.ran || []).length} check${(out.ran || []).length === 1 ? '' : 's'}: ${passed} passed, ${failed} failed${other ? `, ${other} could not run` : ''}. ${turned?.userMessage || ''}`.trim()
+        userMessage: `Ran ${(out.ran || []).length} check${(out.ran || []).length === 1 ? '' : 's'}: ${passed} passed, ${failed} failed${other ? `, ${other} could not run` : ''}. ${hints ? `${hints} ` : ''}${turned?.userMessage || ''}`.trim()
       };
     }
   }
@@ -6788,7 +6839,38 @@ async function main() {
   reply(out);
 }
 
-main().catch(() => {
+const LIFECYCLE_VERBS = new Set([
+  'export-report',
+  'export',
+  'reset-stage',
+  'reset-workflow',
+  'setup-tests',
+  'run',
+  'start',
+  'status',
+  'stop',
+  'turn',
+  'confirm',
+  'next',
+  'answer',
+  'action'
+]);
+
+main().catch((e) => {
+  const verb = process.argv[2];
+  if (LIFECYCLE_VERBS.has(verb)) {
+    const detail = String(e?.message || e).split('\n')[0];
+    process.stdout.write(
+      `${JSON.stringify({
+        ok: false,
+        action: verb,
+        unlocksStage: false,
+        reason: `savyre-guard ${verb} failed: ${detail}`,
+        userMessage: `Savyre hit an error running \`${verb}\`: ${detail}. Run \`/savyre-next\` again; if the same error repeats, send this message to the Savyre team.`
+      })}\n`
+    );
+    process.exit(0);
+  }
   process.stdout.write(`${JSON.stringify({ permission: 'allow' })}\n`);
   process.exit(0);
 });
